@@ -1132,14 +1132,14 @@ function drawSprites(list,model,right,up,alpha){
   gl.drawElements(gl.TRIANGLES,n*6,gl.UNSIGNED_SHORT,0);
   gl.depthMask(true);
 }
-// dynamic bird buffer (9 birds x 3 tris)
-const birdPos=new Float32Array(9*9*3);
-const birdCol=new Float32Array(9*9*3);
-const birdNor=new Float32Array(9*9*3);
-const birdUV=new Float32Array(9*9*2);
-const birdIdx=new Uint16Array(9*9);
-for(let i=0;i<9;i++)for(let k=0;k<9;k++)birdIdx[i*9+k]=i*9+k;
-for(let i=0;i<9*9;i++){birdCol[i*3]=0.12;birdCol[i*3+1]=0.12;birdCol[i*3+2]=0.14;birdNor[i*3+2]=1;}
+// dynamic bird buffer (9 birds x 5 tris: 2 wings + body + head + tail)
+const birdPos=new Float32Array(9*15*3);
+const birdCol=new Float32Array(9*15*3);
+const birdNor=new Float32Array(9*15*3);
+const birdUV=new Float32Array(9*15*2);
+const birdIdx=new Uint16Array(9*15);
+for(let i=0;i<9;i++)for(let k=0;k<15;k++)birdIdx[i*15+k]=i*15+k;
+for(let i=0;i<9*15;i++){birdCol[i*3]=0.12;birdCol[i*3+1]=0.12;birdCol[i*3+2]=0.14;birdNor[i*3+2]=1;}
 const birdBuf={};
 for(const k of ['pos','col','nor','uv'])birdBuf[k]=gl.createBuffer();
 birdBuf.idx=gl.createBuffer();
@@ -1152,11 +1152,13 @@ function drawBirds(){
       [0,0,2.0],[-6,flap,-1.6],[0,0,-2.0],   // left wing
       [0,0,2.0],[0,0,-2.0],[6,flap,-1.6],    // right wing
       [0,0,2.6],[-0.35,0,-1.8],[0.35,0,-1.8], // body
+      [0,0,3.6],[-0.28,0,2.4],[0.28,0,2.4],  // head
+      [-0.5,0,-1.8],[0.5,0,-1.8],[0,0,-3.4],  // tail fan
     ];
-    for(let k=0;k<9;k++){
-      birdPos[(i*9+k)*3]=b.x+pts[k][0];
-      birdPos[(i*9+k)*3+1]=b.y+pts[k][1];
-      birdPos[(i*9+k)*3+2]=b.z+pts[k][2];
+    for(let k=0;k<15;k++){
+      birdPos[(i*15+k)*3]=b.x+pts[k][0];
+      birdPos[(i*15+k)*3+1]=b.y+pts[k][1];
+      birdPos[(i*15+k)*3+2]=b.z+pts[k][2];
     }
   }
   gl.bindBuffer(gl.ARRAY_BUFFER,birdBuf.pos);
@@ -1486,6 +1488,20 @@ function render(){
     const ox2=c.x+c.s*0.5,oy2=c.y-c.s*0.15,oz2=c.z-c.s*0.1;
     sprites.push({cx:ox1,cy:oy1,cz:oz1,rx:c.s*0.62,ry:c.s*0.3,r:ct[0]*0.94,g:ct[1]*0.96,b:ct[2],d:Math.hypot(ox1-eye[0],oy1-eye[1],oz1-eye[2])});
     sprites.push({cx:ox2,cy:oy2,cz:oz2,rx:c.s*0.52,ry:c.s*0.26,r:ct[0]*0.88,g:ct[1]*0.91,b:ct[2]*0.97,d:Math.hypot(ox2-eye[0],oy2-eye[1],oz2-eye[2])});
+    // fourth puff: a high cap so the cloud reads as a cumulus, not a pancake
+    const ox3=c.x+c.s*0.05,oy3=c.y+c.s*0.22,oz3=c.z-c.s*0.05;
+    sprites.push({cx:ox3,cy:oy3,cz:oz3,rx:c.s*0.45,ry:c.s*0.28,r:ct[0],g:ct[1],b:ct[2],d:Math.hypot(ox3-eye[0],oy3-eye[1],oz3-eye[2])});
+  }
+  // volcano smoke: a rising column over each peak + a warm crater glow
+  for(const p of PEAKS){
+    const py=groundY(p[0],p[1]);
+    for(let k=0;k<4;k++){
+      const rise=(S.time*10+k*50)%200;
+      const sx=p[0]+rise*0.35,sy=py+30+rise,sz=p[1]+rise*0.12;
+      const ss=26+rise*0.45;
+      sprites.push({cx:sx,cy:sy,cz:sz,rx:ss,ry:ss*0.7,r:0.55,g:0.55,b:0.58,d:Math.hypot(sx-eye[0],sy-eye[1],sz-eye[2])});
+    }
+    sprites.push({cx:p[0],cy:py+6,cz:p[1],rx:20,ry:11,r:1.0,g:0.45,b:0.12,d:Math.hypot(p[0]-eye[0],py+6-eye[1],p[1]-eye[2])});
   }
   sprites.sort((a,b)=>b.d-a.d);
   drawSprites(sprites,ident,camRight,camUp,S.mission==='night'?0.85:0.92);
