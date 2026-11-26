@@ -43,17 +43,62 @@ const S={
   x:0,y:2,z:-40,heading:0,pitch:0,bank:0,speed:0,throttle:0,
   rings:0,score:0,time:0,vspeed:0,nextRing:0,
   crashed:false,landed:false,msg:'',msgT:0,fps:0,propAngle:0,
+  muted:false,newBest:false,
 };
 window.S=S;
+// best time (localStorage, survives reloads; silent if unavailable)
+let BEST=null;
+try{BEST=parseFloat(localStorage.getItem('archipelago-best'))||null;}catch(e){}
+// contrail: recent tail positions, drawn as soft sprites
+const TRAIL=[];let trailT=0;
 function resetState(){
   S.started=false;S.paused=false;S.mode='takeoff';S.view='chase';
   S.x=0;S.y=2;S.z=-40;S.heading=0;S.pitch=0;S.bank=0;S.speed=0;S.throttle=0;
   S.rings=0;S.score=0;S.time=0;S.vspeed=0;S.nextRing=0;
   S.crashed=false;S.landed=false;S.msg='';S.msgT=0;S.propAngle=0;
+  S.newBest=false;TRAIL.length=0;trailT=0;
   for(const r of RINGS)r.passed=false;
   for(const b of BIRDS){b.x=b.x0;b.y=b.y0;b.z=b.z0;}
 }
 function flash(t){S.msg=t;S.msgT=3;}
+
+// ---------- audio (WebAudio, no files; starts on first gesture) ----------
+let AC=null,engOsc=null,engGain=null;
+function audioInit(){
+  if(AC)return;
+  try{
+    const Ctx=window.AudioContext||window.webkitAudioContext;
+    if(!Ctx)return;
+    AC=new Ctx();
+    engOsc=AC.createOscillator();engOsc.type='sawtooth';engOsc.frequency.value=55;
+    const flt=AC.createBiquadFilter();flt.type='lowpass';flt.frequency.value=320;
+    engGain=AC.createGain();engGain.gain.value=0;
+    engOsc.connect(flt);flt.connect(engGain);engGain.connect(AC.destination);
+    engOsc.start();
+  }catch(e){AC=null;}
+}
+function audioTick(){
+  if(!AC||!engOsc)return;
+  if(AC.state==='suspended')AC.resume().catch(()=>{});
+  const on=S.started&&!S.paused&&!S.muted;
+  engGain.gain.setTargetAtTime(on?0.015+S.throttle*0.05:0,AC.currentTime,0.1);
+  engOsc.frequency.setTargetAtTime(50+S.throttle*55+S.speed*0.15,AC.currentTime,0.1);
+}
+function beep(f0,f1,dur,type,vol,when){
+  if(!AC||S.muted)return;
+  try{
+    const t=AC.currentTime+(when||0);
+    const o=AC.createOscillator(),g=AC.createGain();
+    o.type=type||'sine';o.frequency.setValueAtTime(f0,t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),t+dur);
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol||0.15,t+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+dur+0.05);
+  }catch(e){}
+}
+function chimeRing(){beep(880,880,0.16,'sine',0.16,0);beep(1318,1318,0.22,'sine',0.14,0.09);}
+function jingleLand(){beep(523,523,0.16,'triangle',0.16,0);beep(659,659,0.16,'triangle',0.16,0.12);beep(784,784,0.3,'triangle',0.18,0.24);}
+function thudCrash(){beep(140,38,0.35,'sine',0.25,0);}
 
 // ---------- deterministic world (seed 20261126) ----------
 const rng=mulberry32(20261126);
@@ -264,6 +309,12 @@ const texKarang=signTexture('PULAU KARANG');
 const texNusa=canvasTexture(512,96,(g)=>{
   g.fillStyle='#c81e2b';g.font='bold 64px Arial,sans-serif';
   g.textAlign='center';g.textBaseline='middle';g.fillText('NUSA-1',256,50);
+});
+// lit windows (warm) on a dark facade — terminal + tower cabin
+const winTex=canvasTexture(256,64,(g)=>{
+  g.fillStyle='#1d2f45';g.fillRect(0,0,256,64);
+  g.fillStyle='#ffd98a';
+  for(let i=0;i<8;i++){g.fillRect(10+i*30,14,20,36);}
 });
 
 // ---------- matrices (column-major, like WebGL expects) ----------
@@ -598,6 +649,12 @@ function buildAirport(){
     const gy=groundY(cx,cz);
     meshCylinder(m,cx,gy+h/2,cz,2.6,3.4,h,0.92,0.92,0.90,8);
     meshBox(m,cx,gy+h+2,cz,11,5,11,0.35,0.62,0.85);
+    // lit windows around the cabin (4 sides)
+    const wy0=gy+h+0.5,wy1=gy+h+3.5,wuv=[[0,0],[1,0],[1,1],[0,1]];
+    meshFlatQuad(m,[cx+5.6,wy0,cz-4],[cx+5.6,wy0,cz+4],[cx+5.6,wy1,cz+4],[cx+5.6,wy1,cz-4],[1,0,0],1,1,1,wuv,winTex);
+    meshFlatQuad(m,[cx-5.6,wy0,cz+4],[cx-5.6,wy0,cz-4],[cx-5.6,wy1,cz-4],[cx-5.6,wy1,cz+4],[-1,0,0],1,1,1,wuv,winTex);
+    meshFlatQuad(m,[cx-4,wy0,cz+5.6],[cx+4,wy0,cz+5.6],[cx+4,wy1,cz+5.6],[cx-4,wy1,cz+5.6],[0,0,1],1,1,1,wuv,winTex);
+    meshFlatQuad(m,[cx+4,wy0,cz-5.6],[cx-4,wy0,cz-5.6],[cx-4,wy1,cz-5.6],[cx+4,wy1,cz-5.6],[0,0,-1],1,1,1,wuv,winTex);
     meshBox(m,cx,gy+h+5.5,cz,11.5,1,11.5,0.75,0.15,0.18);
     meshBox(m,cx,gy+h+9,cz,0.4,6,0.4,0.3,0.3,0.32);
     meshSphere(m,cx,gy+h+12.5,cz,0.9,0.9,0.9,1.0,0.3,0.2,6);
@@ -618,6 +675,12 @@ function buildAirport(){
     const gy=groundY(cx,cz);
     meshBox(m,cx,gy+h/2,cz,w,h,d,0.88,0.87,0.84); // main hall
     meshBox(m,cx-w/2-0.3,gy+h*0.32,cz,0.6,h*0.55,d*0.85,0.35,0.62,0.85); // glass band, runway side
+    // lit windows on the long walls + far wall
+    const wy0=gy+h*0.22,wy1=gy+h*0.55,wuv=[[0,0],[1,0],[1,1],[0,1]];
+    const wx0=cx-w/2+3,wx1=cx+w/2-3,wz0=cz-d/2+3,wz1=cz+d/2-3;
+    meshFlatQuad(m,[wx0,wy0,cz+d/2+0.1],[wx1,wy0,cz+d/2+0.1],[wx1,wy1,cz+d/2+0.1],[wx0,wy1,cz+d/2+0.1],[0,0,1],1,1,1,wuv,winTex);
+    meshFlatQuad(m,[wx1,wy0,cz-d/2-0.1],[wx0,wy0,cz-d/2-0.1],[wx0,wy1,cz-d/2-0.1],[wx1,wy1,cz-d/2-0.1],[0,0,-1],1,1,1,wuv,winTex);
+    meshFlatQuad(m,[cx+w/2+0.1,wy0,wz1],[cx+w/2+0.1,wy0,wz0],[cx+w/2+0.1,wy1,wz0],[cx+w/2+0.1,wy1,wz1],[1,0,0],1,1,1,wuv,winTex);
     meshBox(m,cx,gy+h-0.8,cz,w+1,1.2,d+1,0.78,0.12,0.16); // red trim
     meshBox(m,cx,gy+h+0.6,cz,w+2,1.2,d+2,0.55,0.58,0.62); // roof slab
     // sign on the runway-facing wall (viewer looks +x, their right is +z)
@@ -914,7 +977,7 @@ function update(dt){
     const r=RINGS[S.nextRing];
     if(prevZ<r.z&&S.z>=r.z){
       const d=Math.hypot(S.x-r.x,S.y-r.y);
-      if(d<r.r){r.passed=true;S.rings++;S.score+=100;flash('CINCIN '+(S.nextRing+1)+'  +100');}
+      if(d<r.r){r.passed=true;S.rings++;S.score+=100;chimeRing();flash('CINCIN '+(S.nextRing+1)+'  +100');}
       else flash('CINCIN '+(S.nextRing+1)+' TERLEWAT');
       S.nextRing++;
     }
@@ -925,16 +988,30 @@ function update(dt){
     S.mode='done';S.landed=true;S.y=gy+2;
     const bonus=500+50*S.rings;S.score+=bonus;
     flash('MENDARAT! +'+bonus);
+    jingleLand();
+    if(!BEST||S.time<BEST){BEST=S.time;S.newBest=true;try{localStorage.setItem('archipelago-best',String(BEST));}catch(e){}}
+    else S.newBest=false;
   }else if(S.mode==='flying'&&S.y<gy+1.5){
     const onStrip=Math.abs(S.x)<40&&((S.z>-350&&S.z<350)||(S.z>8650&&S.z<9350));
     if(onStrip&&S.vspeed>-6&&S.speed<75){S.mode='takeoff';S.y=gy+2;}
-    else{S.crashed=true;S.mode='crashed';flash('MENABRAK TERRAIN — tekan R');}
+    else{S.crashed=true;S.mode='crashed';thudCrash();flash('MENABRAK TERRAIN — tekan R');}
   }
   if(S.z>9600)S.z=9600;
   if(S.y>1200)S.y=1200;
   for(const b of BIRDS){b.z+=b.sp*dt;b.x+=Math.sin(S.time*0.3+b.ph)*2*dt;if(b.z>9500)b.z=200;}
   for(const c of CLOUDS){c.x+=c.drift*dt;if(c.x>2400)c.x=-2400;}
   if(S.msgT>0)S.msgT-=dt;
+  // contrail: record the tail while flying, clear on the ground
+  if(S.mode==='flying'&&S.speed>20){
+    trailT+=dt;
+    if(trailT>0.12){
+      trailT=0;
+      const cp=Math.cos(S.pitch),sp2=Math.sin(S.pitch);
+      const fx=Math.sin(S.heading)*cp,fy=sp2,fz=Math.cos(S.heading)*cp;
+      TRAIL.push({x:S.x-fx*8,y:S.y-fy*8,z:S.z-fz*8});
+      if(TRAIL.length>28)TRAIL.shift();
+    }
+  }else if(TRAIL.length)TRAIL.length=0;
 }
 
 // ---------- camera + render ----------
@@ -1051,6 +1128,16 @@ function render(){
   }
   sprites.sort((a,b)=>b.d-a.d);
   drawSprites(sprites,ident,camRight,camUp,0.92);
+  // contrail puffs behind the plane (older = bigger, softer)
+  if(TRAIL.length>2){
+    const ts=[];
+    for(let i=0;i<TRAIL.length;i++){
+      const p=TRAIL[i],age=TRAIL.length-1-i;
+      ts.push({cx:p.x,cy:p.y,cz:p.z,rx:2+age*0.4,ry:2+age*0.4,r:1,g:1,b:1,d:Math.hypot(p.x-eye[0],p.y-eye[1],p.z-eye[2])});
+    }
+    ts.sort((a,b)=>b.d-a.d);
+    drawSprites(ts,ident,camRight,camUp,0.26);
+  }
   const sunPos=[eye[0]+SUN_DIR[0]*9800,eye[1]+SUN_DIR[1]*9800,eye[2]+SUN_DIR[2]*9800];
   drawSprites([
     {cx:sunPos[0],cy:sunPos[1],cz:sunPos[2],rx:900,ry:900,r:1,g:0.95,b:0.75},
@@ -1149,7 +1236,7 @@ function drawHUD(){
   txt('SKOR '+S.score,640,33,19,'#ffd23d','center','800');
   txt('CINCIN '+S.rings+'/8',800,33,16,'#eaf6ff','center','700');
   txt(fmtTime(S.time),1000,33,16,'#eaf6ff','center','700');
-  txt(Math.round(S.fps)+' fps',1244,33,13,'#8fb8d8','right');
+  if(SCALE<2)txt(Math.round(S.fps)+' fps',1244,33,13,'#8fb8d8','right');
   if(S.view==='cockpit'){drawCockpit();drawTopStrip();return;}
   // --- chase HUD: left instruments ---
   panel(10,66,196,148,0.6);
@@ -1192,7 +1279,7 @@ function drawHUD(){
   hctx.beginPath();hctx.moveTo(640,344);hctx.lineTo(640,352);hctx.moveTo(640,368);hctx.lineTo(640,376);
   hctx.moveTo(624,360);hctx.lineTo(632,360);hctx.moveTo(648,360);hctx.lineTo(656,360);hctx.stroke();
   // --- bottom hints + message ---
-  txt('Atas/Bawah pitch - Kiri/Kanan belok - Shift/Ctrl throttle - C kokpit - R ulang - P jeda',20,700,13,'rgba(234,246,255,0.75)','left');
+  txt('Atas/Bawah pitch - Kiri/Kanan belok - Shift/Ctrl throttle - C kokpit - R ulang - P jeda - M suara',20,700,13,'rgba(234,246,255,0.75)','left');
   txt(S.view==='chase'?'CHASE VIEW':'COCKPIT VIEW',1260,700,13,'rgba(234,246,255,0.75)','right');
   if(S.msgT>0){
     hctx.font='800 30px Arial,sans-serif';hctx.textAlign='center';hctx.textBaseline='middle';
@@ -1213,12 +1300,14 @@ function drawHUD(){
     txt('Tekan R untuk terbang lagi',640,388,16,'#bfe3ff','center');
   }
   if(S.landed){
-    panel(340,240,600,220,0.92);
-    txt('MENDARAT DI RUNWAY 27!',640,282,30,'#7dffa8','center','800');
-    txt('Cincin: '+S.rings+' × 100  =  '+(S.rings*100),640,326,18,'#eaf6ff','center');
-    txt('Bonus mendarat: 500 + 50 × '+S.rings+'  =  '+(500+50*S.rings),640,356,18,'#eaf6ff','center');
-    txt('SKOR AKHIR: '+S.score,640,396,24,'#ffd23d','center','800');
-    txt('Tekan R untuk terbang lagi',640,432,15,'#bfe3ff','center');
+    panel(340,225,600,260,0.92);
+    txt('MENDARAT DI RUNWAY 27!',640,267,30,'#7dffa8','center','800');
+    txt('Cincin: '+S.rings+' × 100  =  '+(S.rings*100),640,305,18,'#eaf6ff','center');
+    txt('Bonus mendarat: 500 + 50 × '+S.rings+'  =  '+(500+50*S.rings),640,333,18,'#eaf6ff','center');
+    txt('SKOR AKHIR: '+S.score,640,367,24,'#ffd23d','center','800');
+    txt('WAKTU: '+fmtTime(S.time)+(S.newBest?'   ★ REKOR BARU!':''),640,400,18,'#eaf6ff','center','700');
+    txt('WAKTU TERBAIK: '+(BEST!=null?fmtTime(BEST):'-'),640,428,15,'#bfe3ff','center');
+    txt('Tekan R untuk terbang lagi',640,460,15,'#bfe3ff','center');
   }
 }
 function drawTopStrip(){
@@ -1227,7 +1316,7 @@ function drawTopStrip(){
   txt('SKOR '+S.score,640,33,19,'#ffd23d','center','800');
   txt('CINCIN '+S.rings+'/8',800,33,16,'#eaf6ff','center','700');
   txt(fmtTime(S.time),1000,33,16,'#eaf6ff','center','700');
-  txt(Math.round(S.fps)+' fps',1244,33,13,'#8fb8d8','right');
+  if(SCALE<2)txt(Math.round(S.fps)+' fps',1244,33,13,'#8fb8d8','right');
   if(S.msgT>0){
     hctx.font='800 26px Arial,sans-serif';hctx.textAlign='center';hctx.textBaseline='middle';
     hctx.lineWidth=5;hctx.lineJoin='round';hctx.strokeStyle='rgba(4,20,32,0.85)';
@@ -1315,6 +1404,7 @@ function drawStart(){
   txt('ATAS / BAWAH  pitch      KIRI / KANAN  belok      Shift / Ctrl  throttle',640,368,16,'#ffffff','center','700');
   txt('Mouse  belok    ·    C  kokpit    ·    R  ulang    ·    P  jeda',640,396,16,'#ffffff','center','700');
   txt('Cincin +100  ·  Mendarat +500 + 50/cincin',640,432,15,'#ffd23d','center','700');
+  if(BEST!=null)txt('WAKTU TERBAIK: '+fmtTime(BEST),640,464,15,'#7dffa8','center','700');
   const blink=Math.floor(performance.now()/500)%2===0;
   if(blink)txt('—  KLIK UNTUK TERBANG  —',640,500,24,'#ffffff','center','800');
   txt('Dunia deterministik · seed 20261126',640,560,13,'#8fb8d8','center');
@@ -1325,12 +1415,15 @@ addEventListener('keydown',e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();
   keys[e.key]=true;
   if(e.repeat)return;
+  audioInit();
   if(e.key==='c'||e.key==='C'){if(S.started)S.view=S.view==='chase'?'cockpit':'chase';}
   if(e.key==='r'||e.key==='R')resetState();
   if(e.key==='p'||e.key==='P')S.paused=!S.paused;
+  if(e.key==='m'||e.key==='M'){S.muted=!S.muted;flash(S.muted?'SUARA MATI':'SUARA NYALA');}
 });
 addEventListener('keyup',e=>{keys[e.key]=false;});
 document.getElementById('wrap').addEventListener('mousedown',()=>{
+  audioInit();
   if(!S.started){S.started=true;}
 });
 addEventListener('mousemove',e=>{mouseX=e.clientX/innerWidth;mouseActive=performance.now();});
@@ -1349,6 +1442,7 @@ function frame(now){
   lastT=now;
   if(dt>0)S.fps=S.fps*0.95+(1/Math.max(dt,0.001))*0.05;
   update(dt);
+  audioTick();
   render();
   drawHUD();
   requestAnimationFrame(frame);
