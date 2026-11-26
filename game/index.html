@@ -213,13 +213,14 @@ const hctx=hudCanvas.getContext('2d');
 
 const VS=`attribute vec3 aPos;attribute vec3 aCol;attribute vec3 aNor;attribute vec2 aUV;
 uniform mat4 uProj,uView,uModel;uniform vec3 uSun;uniform vec3 uCam;
-uniform float uFog,uSpec;
-varying vec3 vCol;varying vec3 vNor;varying vec3 vWp;varying vec2 vUV;varying float vFog;varying float vSpec;
+uniform float uFog,uSpec;uniform mat4 uLightVP;
+varying vec3 vCol;varying vec3 vNor;varying vec3 vWp;varying vec2 vUV;varying float vFog;varying float vSpec;varying vec4 vLight;
 void main(){
   vec4 wp=uModel*vec4(aPos,1.0);
   vWp=wp.xyz;
   vNor=normalize(mat3(uModel)*aNor);
   vCol=aCol;vUV=aUV;vSpec=uSpec;
+  vLight=uLightVP*wp;
   vec4 vp=uView*wp;
   float dist=-vp.z;
   vFog=uFog>0.5?clamp((dist-1200.0)/6000.0,0.0,1.0):0.0;
@@ -228,7 +229,8 @@ void main(){
 const FS=`precision mediump float;
 uniform vec3 uSun;uniform vec3 uCam;uniform vec3 uFogCol;
 uniform sampler2D uTex;uniform float uUseTex;uniform float uAlpha;
-varying vec3 vCol;varying vec3 vNor;varying vec3 vWp;varying vec2 vUV;varying float vFog;varying float vSpec;
+uniform sampler2D uShadow;uniform float uUseShadow;
+varying vec3 vCol;varying vec3 vNor;varying vec3 vWp;varying vec2 vUV;varying float vFog;varying float vSpec;varying vec4 vLight;
 void main(){
   vec3 n=normalize(vNor);
   float dif=max(dot(n,normalize(uSun)),0.0);
@@ -245,6 +247,13 @@ void main(){
   if(uUseTex>0.5){col*=tex.rgb;}
   float a=uAlpha;
   if(uUseTex>0.5){a*=tex.a;}
+  if(uUseShadow>0.5){
+    vec3 lp=vLight.xyz/vLight.w*0.5+0.5;
+    if(lp.x>0.0&&lp.x<1.0&&lp.y>0.0&&lp.y<1.0&&lp.z<1.0){
+      float sd=texture2D(uShadow,lp.xy).r;
+      if(lp.z>sd+0.002){col*=0.55;}
+    }
+  }
   col=mix(col,uFogCol,vFog);
   gl_FragColor=vec4(col,a);
 }`;
@@ -257,7 +266,7 @@ gl.linkProgram(prog);
 if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(prog));
 gl.useProgram(prog);
 const U={};
-['uProj','uView','uModel','uSun','uCam','uFogCol','uTex','uUseTex','uAlpha','uFog','uSpec'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+['uProj','uView','uModel','uSun','uCam','uFogCol','uTex','uUseTex','uAlpha','uFog','uSpec','uLightVP','uShadow','uUseShadow'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
 const A={};
 ['aPos','aCol','aNor','aUV'].forEach(n=>A[n]=gl.getAttribLocation(prog,n));
 gl.enable(gl.DEPTH_TEST);
@@ -267,7 +276,47 @@ gl.getExtension('OES_element_index_uint');
 window.__gl=gl;
 gl.uniform3f(U.uSun,0.55,0.62,0.35);
 gl.uniform3f(U.uFogCol,0.78,0.88,0.94);
-gl.uniform1i(U.uTex,0);
+// ---------- shadow mapping (real sun shadows) ----------
+const SHADOW_SIZE=1024;
+const depthExt=gl.getExtension('WEBGL_depth_texture');
+let shadowFB=null,shadowTex=null,shadowProg=null,shadowU=null,shadowA=null;
+if(depthExt){
+  shadowTex=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,shadowTex);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.DEPTH_COMPONENT,SHADOW_SIZE,SHADOW_SIZE,0,gl.DEPTH_COMPONENT,gl.UNSIGNED_SHORT,null);
+  shadowFB=gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER,shadowFB);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,shadowTex,0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  const DVS=`attribute vec3 aPos;uniform mat4 uLightVP;uniform mat4 uModel;
+  void main(){gl_Position=uLightVP*uModel*vec4(aPos,1.0);}`;
+  const DFS=`precision mediump float;void main(){}`;
+  shadowProg=gl.createProgram();
+  gl.attachShader(shadowProg,compile(gl.VERTEX_SHADER,DVS));
+  gl.attachShader(shadowProg,compile(gl.FRAGMENT_SHADER,DFS));
+  gl.linkProgram(shadowProg);
+  shadowU={uLightVP:gl.getUniformLocation(shadowProg,'uLightVP'),uModel:gl.getUniformLocation(shadowProg,'uModel')};
+  shadowA={aPos:gl.getAttribLocation(shadowProg,'aPos')};
+  gl.bindTexture(gl.TEXTURE_2D,null);
+}
+function matOrtho(l,r,b,t,n,f){
+  return [2/(r-l),0,0,0, 0,2/(t-b),0,0, 0,0,-2/(f-n),0, -(r+l)/(r-l),-(t+b)/(t-b),-(f+n)/(f-n),1];
+}
+// light-space matrix: orthographic box around the plane, sun as the light
+function lightVP(){
+  const sd=[0.55,0.62,0.35];
+  const cx=S.x,cy=S.y,cz=S.z;
+  const eye=[cx+sd[0]*600,cy+sd[1]*600,cz+sd[2]*600];
+  const fwd=[cx-eye[0],cy-eye[1],cz-eye[2]];
+  const fl=Math.hypot(fwd[0],fwd[1],fwd[2]);
+  const view=matView(eye,[fwd[0]/fl,fwd[1]/fl,fwd[2]/fl],[0,1,0]);
+  const proj=matOrtho(-300,300,-300,300,1,1400);
+  return matMul(proj,view);
+}
 
 // white 1x1 texture (default, untextured draws)
 const whiteTex=gl.createTexture();
@@ -1182,6 +1231,46 @@ function project(x,y,z){
 function blobShadow(x,z,sx,sz,a){
   drawMesh(shadowGL,matMul(matTranslate(x,groundY(x,z)+0.55,z),matScale(sx,1,sz)),{tex:blobTex,alpha:a});
 }
+// draw one mesh into the shadow depth map (position only)
+function drawShadowCaster(vao,model){
+  gl.uniformMatrix4fv(shadowU.uModel,false,new Float32Array(model));
+  gl.bindBuffer(gl.ARRAY_BUFFER,vao.pos);
+  gl.enableVertexAttribArray(shadowA.aPos);
+  gl.vertexAttribPointer(shadowA.aPos,3,gl.FLOAT,false,0,0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,vao.idx);
+  gl.drawElements(gl.TRIANGLES,vao.count,gl.UNSIGNED_SHORT,0);
+}
+// render the shadow casters into the depth map (light = sun, box around the plane)
+function renderShadowMap(){
+  if(!shadowFB)return null;
+  const lvp=lightVP();
+  gl.bindFramebuffer(gl.FRAMEBUFFER,shadowFB);
+  gl.viewport(0,0,SHADOW_SIZE,SHADOW_SIZE);
+  gl.clear(gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(shadowProg);
+  gl.uniformMatrix4fv(shadowU.uLightVP,false,new Float32Array(lvp));
+  const ident=matIdentity();
+  drawShadowCaster(terrainGL,ident);
+  drawShadowCaster(airportGL,ident);
+  drawShadowCaster(runwayStripGL,ident);
+  drawShadowCaster(runwayMarksGL,ident);
+  drawShadowCaster(palmGL,ident);
+  drawShadowCaster(bushGL,ident);
+  drawShadowCaster(winGL,ident);
+  const planeModel=matMul(matTranslate(S.x,S.y,S.z),
+    matMul(matRotY(S.heading),matMul(matRotX(-S.pitch),matRotZ(-S.bank))));
+  drawShadowCaster(planeGL,planeModel);
+  drawShadowCaster(planeGL,matMul(matTranslate(-58,groundY(-58,9150)+2,9150),matMul(matRotY(0.6),matScale(0.9,0.9,0.9))));
+  drawShadowCaster(planeGL,matMul(matTranslate(44,groundY(44,105)+2,105),matMul(matRotY(1.4),matScale(0.9,0.9,0.9))));
+  drawShadowCaster(planeGL,matMul(matTranslate(44,groundY(44,135)+2,135),matMul(matRotY(-1.4),matScale(0.9,0.9,0.9))));
+  drawShadowCaster(planeGL,matMul(matTranslate(44,groundY(44,9090)+2,9090),matMul(matRotY(1.4),matScale(0.9,0.9,0.9))));
+  drawShadowCaster(planeGL,matMul(matTranslate(44,groundY(44,9145)+2,9145),matMul(matRotY(-1.4),matScale(0.9,0.9,0.9))));
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  gl.viewport(0,0,glCanvas.width,glCanvas.height);
+  gl.useProgram(prog);
+  return lvp;
+}
+
 function render(){
   gl.viewport(0,0,glCanvas.width,glCanvas.height);
   // sky + fog colors follow the mission (day / night / storm)
@@ -1220,6 +1309,18 @@ function render(){
   const camRight=[f[1]*up[2]-f[2]*up[1],f[2]*up[0]-f[0]*up[2],f[0]*up[1]-f[1]*up[0]];
   const camUp=[camRight[1]*f[2]-camRight[2]*f[1],camRight[2]*f[0]-camRight[0]*f[2],camRight[0]*f[1]-camRight[1]*f[0]];
   const ident=matIdentity();
+  // real sun shadows: render the depth map, then sample it in the main pass
+  const lvp=renderShadowMap();
+  if(lvp){
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D,shadowTex);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1i(U.uShadow,1);
+    gl.uniform1f(U.uUseShadow,1);
+    gl.uniformMatrix4fv(U.uLightVP,false,new Float32Array(lvp));
+  }else{
+    gl.uniform1f(U.uUseShadow,0);
+  }
   // sky dome follows the camera (no fog, no depth write)
   gl.depthMask(false);
   drawMesh(S.mission==='night'?nightSkyGL:skyGL,matTranslate(eye[0],eye[1],eye[2]),{noFog:true});
@@ -1276,14 +1377,8 @@ function render(){
   const park4=matMul(matTranslate(44,groundY(44,9145)+2,9145),matMul(matRotY(-1.4),matScale(0.9,0.9,0.9)));
   drawMesh(planeGL,park4,{spec:0.35});
   drawMesh(propGL,matMul(park4,matMul(matTranslate(0,0.4,7.15),matRotZ(2.1))),{});
-  // plane shadow on the ground below
-  const gy=groundY(S.x,S.z);
-  const alt=Math.max(0,S.y-gy);
-  if(alt<500){
-    const sc=12+alt*0.15;
-    const shModel=matMul(matTranslate(S.x,gy+0.6,S.z),matScale(sc,1,sc));
-    drawMesh(shadowGL,shModel,{tex:blobTex,alpha:clamp(0.4-alt*0.007,0.05,0.4)});
-  }
+  // (plane shadow is now the real shadow map; the old blob is removed to
+  // avoid double-darkening under the plane)
   // contact shadows under the airport structures + palms (grounds them)
   blobShadow(80,9100,32,22,0.28); // Bintang terminal
   blobShadow(68,8950,10,10,0.28); // Bintang tower
