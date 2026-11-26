@@ -232,7 +232,7 @@ varying vec3 vCol;varying vec3 vNor;varying vec3 vWp;varying vec2 vUV;varying fl
 void main(){
   vec3 n=normalize(vNor);
   float dif=max(dot(n,normalize(uSun)),0.0);
-  vec3 col=vCol*(0.38+0.62*dif);
+  vec3 col=vCol*(vec3(0.38,0.38,0.40)+vec3(0.62,0.58,0.48)*dif);
   if(vSpec>0.01){
     vec3 vd=normalize(uCam-vWp);
     vec3 r=reflect(-normalize(uSun),n);
@@ -293,18 +293,33 @@ const blobTex=canvasTexture(128,128,(g)=>{
   gr.addColorStop(1,'rgba(255,255,255,0)');
   g.fillStyle=gr;g.fillRect(0,0,128,128);
 });
-// terrain detail (grain): grayscale noise, multiplies the vertex colors
-// (uses the seeded rng, not Math.random, so the world stays deterministic)
-const detailTex=canvasTexture(128,128,(g)=>{
-  const img=g.createImageData(128,128);
-  for(let i=0;i<128*128;i++){
+// terrain detail (grain): fine grass blades + sand speckle, multiplies the
+// vertex colors (grayscale, so the grass/sand hues are preserved)
+const detailTex=canvasTexture(256,256,(g)=>{
+  const img=g.createImageData(256,256);
+  for(let i=0;i<256*256;i++){
     const v=200+Math.floor(rng()*55);
     img.data[i*4]=v;img.data[i*4+1]=v;img.data[i*4+2]=v;img.data[i*4+3]=255;
   }
   g.putImageData(img,0,0);
+  // fine speckles (sand grain)
+  for(let i=0;i<2500;i++){
+    const x=rng()*256,y=rng()*256;
+    const v=rng()<0.5?160:240;
+    g.fillStyle='rgba('+v+','+v+','+v+',0.5)';
+    g.fillRect(x,y,1+rng()*1.5,1+rng()*1.5);
+  }
+  // short strokes (grass blades), low contrast so they read as texture
+  for(let i=0;i<600;i++){
+    const x=rng()*256,y=rng()*256,a=rng()*TAU,l=3+rng()*6;
+    const v=rng()<0.5?170:230;
+    g.strokeStyle='rgba('+v+','+v+','+v+',0.35)';
+    g.lineWidth=1;
+    g.beginPath();g.moveTo(x,y);g.lineTo(x+Math.cos(a)*l,y+Math.sin(a)*l);g.stroke();
+  }
   // soft blotches so the grain is not uniform
   for(let i=0;i<40;i++){
-    const x=rng()*128,y=rng()*128,r=6+rng()*18;
+    const x=rng()*256,y=rng()*256,r=6+rng()*18;
     const gr=g.createRadialGradient(x,y,0,x,y,r);
     const v=rng()<0.5?170:235;
     gr.addColorStop(0,'rgba('+v+','+v+','+v+',0.25)');
@@ -682,6 +697,7 @@ function addSign(p1,p2,p3,p4,nor,tex){
 // the airport: control tower, terminal with sign, apron, taxiway, hangar, windsock
 function buildAirport(){
   const m=Mesh();
+  const wm=Mesh(); // windows (separate textured mesh, so winTex actually shows)
   function tower(cx,cz,h){
     const gy=groundY(cx,cz);
     meshCylinder(m,cx,gy+h/2,cz,2.6,3.4,h,0.92,0.92,0.90,8);
@@ -689,10 +705,10 @@ function buildAirport(){
     meshBox(m,cx,gy+h+2,cz,13,6,13,0.35,0.62,0.85);
     // lit windows around the cabin (4 sides)
     const wy0=gy+h+0.5,wy1=gy+h+4.5,wuv=[[0,0],[1,0],[1,1],[0,1]];
-    meshFlatQuad(m,[cx+6.6,wy0,cz-5],[cx+6.6,wy0,cz+5],[cx+6.6,wy1,cz+5],[cx+6.6,wy1,cz-5],[1,0,0],0.15,0.2,0.3,wuv,winTex);
-    meshFlatQuad(m,[cx-6.6,wy0,cz+5],[cx-6.6,wy0,cz-5],[cx-6.6,wy1,cz-5],[cx-6.6,wy1,cz+5],[-1,0,0],0.15,0.2,0.3,wuv,winTex);
-    meshFlatQuad(m,[cx-5,wy0,cz+6.6],[cx+5,wy0,cz+6.6],[cx+5,wy1,cz+6.6],[cx-5,wy1,cz+6.6],[0,0,1],0.15,0.2,0.3,wuv,winTex);
-    meshFlatQuad(m,[cx+5,wy0,cz-6.6],[cx-5,wy0,cz-6.6],[cx-5,wy1,cz-6.6],[cx+5,wy1,cz-6.6],[0,0,-1],0.15,0.2,0.3,wuv,winTex);
+    meshFlatQuad(wm,[cx+6.6,wy0,cz-5],[cx+6.6,wy0,cz+5],[cx+6.6,wy1,cz+5],[cx+6.6,wy1,cz-5],[1,0,0],1,1,1,wuv,winTex);
+    meshFlatQuad(wm,[cx-6.6,wy0,cz+5],[cx-6.6,wy0,cz-5],[cx-6.6,wy1,cz-5],[cx-6.6,wy1,cz+5],[-1,0,0],1,1,1,wuv,winTex);
+    meshFlatQuad(wm,[cx-5,wy0,cz+6.6],[cx+5,wy0,cz+6.6],[cx+5,wy1,cz+6.6],[cx-5,wy1,cz+6.6],[0,0,1],1,1,1,wuv,winTex);
+    meshFlatQuad(wm,[cx+5,wy0,cz-6.6],[cx-5,wy0,cz-6.6],[cx-5,wy1,cz-6.6],[cx+5,wy1,cz-6.6],[0,0,-1],1,1,1,wuv,winTex);
     meshBox(m,cx,gy+h+6,cz,13.5,1,13.5,0.75,0.15,0.18);
     meshBox(m,cx,gy+h+9.5,cz,0.4,6,0.4,0.3,0.3,0.32);
     meshSphere(m,cx,gy+h+13,cz,0.9,0.9,0.9,1.0,0.3,0.2,6);
@@ -717,9 +733,9 @@ function buildAirport(){
     // lit windows on the long walls + far wall (taller band, reads at distance)
     const wy0=gy+h*0.10,wy1=gy+h*0.45,wuv=[[0,0],[1,0],[1,1],[0,1]];
     const wx0=cx-w/2+3,wx1=cx+w/2-3,wz0=cz-d/2+3,wz1=cz+d/2-3;
-    meshFlatQuad(m,[wx0,wy0,cz+d/2+0.1],[wx1,wy0,cz+d/2+0.1],[wx1,wy1,cz+d/2+0.1],[wx0,wy1,cz+d/2+0.1],[0,0,1],0.15,0.2,0.3,wuv,winTex);
-    meshFlatQuad(m,[wx1,wy0,cz-d/2-0.1],[wx0,wy0,cz-d/2-0.1],[wx0,wy1,cz-d/2-0.1],[wx1,wy1,cz-d/2-0.1],[0,0,-1],0.15,0.2,0.3,wuv,winTex);
-    meshFlatQuad(m,[cx+w/2+0.1,wy0,wz1],[cx+w/2+0.1,wy0,wz0],[cx+w/2+0.1,wy1,wz0],[cx+w/2+0.1,wy1,wz1],[1,0,0],0.15,0.2,0.3,wuv,winTex);
+    meshFlatQuad(wm,[wx0,wy0,cz+d/2+0.1],[wx1,wy0,cz+d/2+0.1],[wx1,wy1,cz+d/2+0.1],[wx0,wy1,cz+d/2+0.1],[0,0,1],1,1,1,wuv,winTex);
+    meshFlatQuad(wm,[wx1,wy0,cz-d/2-0.1],[wx0,wy0,cz-d/2-0.1],[wx0,wy1,cz-d/2-0.1],[wx1,wy1,cz-d/2-0.1],[0,0,-1],1,1,1,wuv,winTex);
+    meshFlatQuad(wm,[cx+w/2+0.1,wy0,wz1],[cx+w/2+0.1,wy0,wz0],[cx+w/2+0.1,wy1,wz0],[cx+w/2+0.1,wy1,wz1],[1,0,0],1,1,1,wuv,winTex);
     meshBox(m,cx,gy+h-0.8,cz,w+1,1.2,d+1,0.78,0.12,0.16); // red trim
     meshBox(m,cx,gy+h+0.6,cz,w+2,1.2,d+2,0.55,0.58,0.62); // roof slab
     // roof details: AC units + antenna (breaks the flat roofline)
@@ -766,7 +782,7 @@ function buildAirport(){
   floodlight(30,90);floodlight(58,150);
   hangar(-88,120);
   windsock(55,250);
-  return meshToGL(m);
+  return {mesh:meshToGL(m),win:meshToGL(wm)};
 }
 function buildTruck(){
   const m=Mesh();
@@ -874,7 +890,9 @@ const runwayGL=buildRunways().mesh;
 const runwayNums=buildRunwayNumbers();
 const palmGL=buildPalms();
 const bushGL=buildBushes();
-const airportGL=buildAirport();
+const airportParts=buildAirport();
+const airportGL=airportParts.mesh;
+const winGL=airportParts.win;
 const ringGLs=RINGS.map(buildRingMesh);
 const planeGL=buildPlane();
 const propGL=buildProp();
@@ -1160,6 +1178,7 @@ function render(){
   drawMesh(palmGL,ident,{});
   drawMesh(bushGL,ident,{});
   drawMesh(airportGL,ident,{});
+  drawMesh(winGL,ident,{tex:winTex});
   for(const s of SIGNS)drawMesh(s.gl,ident,{tex:s.tex});
   // rings (passed ones turn pale green)
   for(let i=0;i<8;i++){
