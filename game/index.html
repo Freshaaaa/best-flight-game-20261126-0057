@@ -43,7 +43,7 @@ const S={
   x:0,y:2,z:-40,heading:0,pitch:0,bank:0,speed:0,throttle:0,
   rings:0,score:0,time:0,vspeed:0,nextRing:0,
   crashed:false,landed:false,msg:'',msgT:0,fps:0,propAngle:0,
-  muted:false,newBest:false,mission:'day',engOut:false,landBonus:0,camDist:34,
+  muted:false,newBest:false,mission:'day',engOut:false,landBonus:0,camDist:34,camH:0.32,
 };
 window.S=S;
 // best time (localStorage, survives reloads; silent if unavailable)
@@ -52,7 +52,7 @@ try{BEST=parseFloat(localStorage.getItem('archipelago-best'))||null;}catch(e){}
 // contrail: recent tail positions, drawn as soft sprites
 const TRAIL=[];let trailT=0;
 function resetState(){
-  S.started=false;S.paused=false;S.mode='takeoff';S.view='chase';S.camDist=34;
+  S.started=false;S.paused=false;S.mode='takeoff';S.view='chase';S.camDist=34;S.camH=0.32;
   S.x=0;S.y=2;S.z=-40;S.heading=0;S.pitch=0;S.bank=0;S.speed=0;S.throttle=0;
   S.rings=0;S.score=0;S.time=0;S.vspeed=0;S.nextRing=0;
   S.crashed=false;S.landed=false;S.msg='';S.msgT=0;S.propAngle=0;
@@ -1146,7 +1146,7 @@ function render(){
     center=[eye[0]+fwd[0]*100,eye[1]+fwd[1]*100+2,eye[2]+fwd[2]*100];
   }else{
     const cd=S.camDist||34;
-    eye=[S.x-fwd[0]*cd,S.y-fwd[1]*cd+cd*0.32,S.z-fwd[2]*cd];
+    eye=[S.x-fwd[0]*cd,S.y-fwd[1]*cd+cd*(S.camH||0.32),S.z-fwd[2]*cd];
     center=[S.x+fwd[0]*60,S.y+2+fwd[1]*60,S.z+fwd[2]*60];
   }
   let f=[center[0]-eye[0],center[1]-eye[1],center[2]-eye[2]];
@@ -1642,10 +1642,10 @@ const missionParam=qs.get('mission');
 if(['day','night','storm','emergency'].includes(missionParam))S.mission=missionParam;
 if(scene==='takeoff'){S.started=true;S.mode='flying';S.x=300;S.y=130;S.z=-450;S.heading=-0.45;S.speed=25;S.throttle=0.3;S.pitch=-0.02;}
 else if(scene==='ring'){S.started=true;S.mode='flying';S.x=380;S.y=230;S.z=2700;S.heading=0.2;S.pitch=-0.02;S.speed=70;S.throttle=0.7;S.nextRing=2;S.rings=2;S.score=200;}
-else if(scene==='landing'){S.started=true;S.mode='flying';S.x=0;S.y=55;S.z=8700;S.speed=40;S.throttle=0.3;S.pitch=-0.06;S.nextRing=8;}
-else if(scene==='cockpit'){S.started=true;S.view='cockpit';S.throttle=0.6;S.speed=30;}
+else if(scene==='landing'){S.started=true;S.mode='flying';S.x=40;S.y=55;S.z=8720;S.heading=-0.3;S.speed=40;S.throttle=0.3;S.pitch=-0.06;S.nextRing=8;}
+else if(scene==='cockpit'){S.started=true;S.mode='flying';S.view='cockpit';S.x=0;S.y=200;S.z=4000;S.heading=0;S.speed=70;S.throttle=0.55;S.pitch=0;S.nextRing=4;S.rings=3;S.score=300;}
 else if(scene==='cover'){S.started=true;S.mode='flying';S.x=250;S.y=260;S.z=650;S.heading=0;S.speed=75;S.throttle=0.55;S.pitch=0;S.nextRing=0;S.rings=0;S.score=0;}
-else if(scene==='landed'){S.started=true;S.mode='takeoff';S.x=50;S.y=4;S.z=9140;S.heading=2.7;S.speed=0;S.throttle=0;S.pitch=0;S.camDist=45;}
+else if(scene==='landed'){S.started=true;S.mode='takeoff';S.x=50;S.y=4;S.z=9140;S.heading=2.7;S.speed=0;S.throttle=0;S.pitch=0;S.camDist=45;S.camH=0.32;}
 
 // ---------- main loop ----------
 let lastT=performance.now();
