@@ -39,7 +39,16 @@ const rng = mulberry32(20261126);
 // ---------- constants ----------
 const W = 1280, H = 720;
 const canvas = document.getElementById('game');
+// Render scale: ?scale=2 renders the canvas backing store at 2x (2560x1440)
+// while the CSS size stays 1280x720, so screenshots come out sharp ("HD").
+// Default is 1x for fast gameplay; the play-test runs at 1x. The 2x
+// backing store is only for screenshots (it saturates the VM's main
+// thread in interactive use).
+const _scale = Math.max(1, Math.min(2, parseFloat(new URLSearchParams(location.search).get('scale')) || 1));
+canvas.width = W * _scale; canvas.height = H * _scale;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
 const ctx = canvas.getContext('2d');
+ctx.scale(_scale, _scale);
 
 // World: x = east (m), z = north (m, forward = +z), y = altitude (m).
 // The route runs from z=0 (Pulau Karang) to z=9000 (Pulau Bintang).
