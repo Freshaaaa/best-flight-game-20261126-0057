@@ -756,8 +756,8 @@ function buildAirport(){
   // floodlight pole (apron lighting): thin mast + crossbar + 3 lamps
   function floodlight(cx,cz){
     const gy=groundY(cx,cz);
-    meshCylinder(m,cx,gy+9,cz,0.3,0.45,18,0.35,0.35,0.38,6);
-    meshBox(m,cx,gy+18,cz,6,0.8,0.8,0.35,0.35,0.38);
+    meshCylinder(m,cx,gy+9,cz,0.3,0.45,18,0.55,0.55,0.58,6);
+    meshBox(m,cx,gy+18,cz,6,0.8,0.8,0.55,0.55,0.58);
     for(const dx of [-2.2,0,2.2])meshBox(m,cx+dx,gy+18.6,cz,1.6,1,1.2,1.0,0.95,0.75);
   }
   // Pulau Bintang (Runway 27) — the main airport
@@ -767,7 +767,7 @@ function buildAirport(){
   meshBox(m,42,2.2,9046,24,0.8,32,0.42,0.42,0.44); // taxiway 27
   meshFlatQuad(m,[38,2.65,9080],[50,2.65,9080],[50,2.65,9082],[38,2.65,9082],[0,1,0],0.95,0.95,0.9,null,null);
   meshFlatQuad(m,[38,2.65,9136],[50,2.65,9136],[50,2.65,9138],[38,2.65,9138],[0,1,0],0.95,0.95,0.9,null,null);
-  floodlight(30,9070);floodlight(58,9170);
+  floodlight(30,9070);floodlight(95,9170);
   // ops building (white, blue roof) east of the terminal
   meshBox(m,112,groundY(112,9170)+3,9170,12,6,10,0.90,0.90,0.88);
   meshBox(m,112,groundY(112,9170)+6.5,9170,13,1,11,0.25,0.45,0.75);
@@ -1318,7 +1318,7 @@ function render(){
     lamps.push({cx:sx,cy:4.2,cz:cz+k*55,rx:7,ry:7,r:1,g:0.85,b:0.5,d:Math.hypot(sx-eye[0],4.2-eye[1],cz+k*55-eye[2])});
   }
   // floodlight heads (apron lighting)
-  for(const [fx,fz] of [[30,9070],[58,9170],[30,90],[58,150]]){
+  for(const [fx,fz] of [[30,9070],[95,9170],[30,90],[58,150]]){
     lamps.push({cx:fx,cy:20.6,cz:fz,rx:8,ry:8,r:1,g:0.95,b:0.8,d:Math.hypot(fx-eye[0],20.6-eye[1],fz-eye[2])});
   }
   lamps.sort((a,b)=>b.d-a.d);
