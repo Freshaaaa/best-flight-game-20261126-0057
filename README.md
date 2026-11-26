@@ -4,7 +4,7 @@
 
 # Archipelago Run — Island Hopper
 
-Fly the little prop plane **Nusa-1** from Runway 09 on Pulau Karang, through 8 golden rings over a tropical archipelago, and land on Runway 27 on Pulau Bintang. A complete chase-view / cockpit-view flight game in pure Canvas 2D — no build step, no network, no external assets.
+Fly the little prop plane **Nusa-1** from Runway 09 on Pulau Karang, through 8 golden rings over a tropical archipelago, and land on Runway 27 on Pulau Bintang. A complete chase-view / cockpit-view flight game in raw WebGL — hand-written shaders, meshes and flight model, no libraries, no build step, no network, no external assets.
 
 ## The game
 
@@ -33,7 +33,7 @@ Take off from Runway 09 (throttle up with Shift, pull up once past 60 kt), fly t
 
 ## Files
 
-- `game/index.html` — the whole game: one self-contained HTML file (inline CSS + JS, Canvas 2D). Open it in desktop Chrome and play. `?scene=takeoff|ring|landing|cockpit` jumps straight to a photogenic moment (used for the screenshots).
+- `game/index.html` — the whole game: one self-contained HTML file (inline CSS + JS, WebGL + 2D HUD overlay). Open it in desktop Chrome and play. `?scene=takeoff|ring|landing|cockpit` jumps straight to a photogenic moment (used for the screenshots).
 - `main.ts` — entrypoint (Node 22, stdlib only): copies `game/` and `screenshots/` into `MAKEFUN_OUTPUT_DIR` (fallback `/output`).
 - `screenshots/` — 4 real renders of the game's own code: takeoff, a ring, final approach, cockpit view.
 - `vendor/makefun-game.ts` — copied from the competition kit unchanged *(pending — see below)*.
@@ -41,8 +41,8 @@ Take off from Runway 09 (throttle up with Shift, pull up once past 60 kt), fly t
 ## Dossier
 
 - **Original**: the name, islands (Pulau Karang, Pulau Bintang), the Nusa-1, the art and the flight model are all original — no copied game, art, music or names.
-- **Tech**: Canvas 2D only. The 3D is a hand-written perspective projection (no engine, no library vendored). The world is a seeded heightmap: 8 islands, 5 volcanic peaks, 26 clouds, 9 birds, 8 rings.
-- **Play-tested**: rendered and screenshotted in desktop Chrome (headless) at 1280×720; the game runs at 60 fps with keyboard and mouse.
+- **Tech**: raw WebGL1 only — hand-written shaders, a seeded heightmap terrain mesh (8 islands, 5 volcanic peaks, 26 billboard clouds, 9 birds, 8 torus rings), a low-poly Nusa-1 with spinning propeller, and a 2D canvas HUD overlay. No engine, no library vendored.
+- **Play-tested**: rendered and screenshotted in desktop Chrome (headless) at 1280×720; the game runs at ~30 fps in headless software rendering (SwiftShader) and a full 9/9 play-test (takeoff, ring, banking, landing, restart, cockpit toggle) passes with zero JS errors.
 
 ## Note on `vendor/makefun-game.ts`
 
