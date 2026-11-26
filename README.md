@@ -9,6 +9,7 @@ Fly the little prop plane **Nusa-1** from Runway 09 on Pulau Karang, through 8 g
 ## The game
 
 - **Chase view** over recognisable terrain: a volcanic island chain with beaches, sea glitter, snow-capped peaks on the horizon, drifting clouds and birds.
+- **3D realistic rendering**: the Nusa-1 is a shaded 3D model (gradient fuselage, glossy canopy, spinning propeller disc, wingtip lights) with its soft shadow on the sea below; islands have sunlit/shaded relief, sandy beaches, turquoise lagoons, palm clusters and jungle speckle; clouds are volumetric with shaded bellies; distant peaks and islands fade into aerial-perspective haze; the sun glitters on the water.
 - **The aircraft in frame**, instruments lit: Nusa-1 banks, pitches and climbs with a spinning propeller, red/green wingtip lights and its registration on the fuselage.
 - **A runway ahead** at both ends of the route (09 for takeoff, 27 for landing) and **a target ring ahead** at every stage — 8 golden rings to fly through.
 - **Altitude, speed and heading on the HUD**, plus score, rings, time and a throttle bar. Press **C** for the **cockpit view**: a full six-pack instrument panel (attitude, airspeed, altitude, heading, throttle, rings) with a yoke, looking out through the windshield.

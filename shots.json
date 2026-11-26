@@ -1,1 +1,22 @@
-{"shots":[{"caption":"Takeoff from Runway 09 on Pulau Karang — Nusa-1 on the runway, rings ahead, HUD lit","file":"screenshots/1-takeoff.png"},{"caption":"Ring 4 of 8 over the archipelago — islands, volcanic peaks, sun glitter on the sea","file":"screenshots/2-ring.png"},{"caption":"Final approach to Runway 27 on Pulau Bintang — all 8 rings flown, gear down for landing","file":"screenshots/3-landing.png"},{"caption":"Cockpit view — six-pack instruments (attitude, airspeed, altitude, heading, throttle, rings) over the islands","file":"screenshots/4-cockpit.png"}]}
+[
+  {
+    "file": "screenshots/1-takeoff.png",
+    "scene": "takeoff",
+    "bytes": 191524
+  },
+  {
+    "file": "screenshots/2-ring.png",
+    "scene": "ring",
+    "bytes": 218211
+  },
+  {
+    "file": "screenshots/3-landing.png",
+    "scene": "landing",
+    "bytes": 172654
+  },
+  {
+    "file": "screenshots/4-cockpit.png",
+    "scene": "cockpit",
+    "bytes": 176843
+  }
+]
