@@ -222,7 +222,7 @@ void main(){
   vCol=aCol;vUV=aUV;vSpec=uSpec;
   vec4 vp=uView*wp;
   float dist=-vp.z;
-  vFog=uFog>0.5?clamp((dist-1600.0)/7500.0,0.0,1.0):0.0;
+  vFog=uFog>0.5?clamp((dist-1200.0)/6000.0,0.0,1.0):0.0;
   gl_Position=uProj*vp;
 }`;
 const FS=`precision mediump float;
@@ -358,6 +358,58 @@ const winTex=canvasTexture(256,64,(g)=>{
   g.fillStyle='#ffd98a';
   for(let i=0;i<8;i++){g.fillRect(10+i*30,14,20,36);}
 });
+// water (wind ripples + foam streaks, mostly light so the sea color shows)
+const waterTex=canvasTexture(256,256,(g)=>{
+  g.fillStyle='#dfe8ea';g.fillRect(0,0,256,256);
+  // ripple strokes (short curved lines, light + dark)
+  for(let i=0;i<900;i++){
+    const x=rng()*256,y=rng()*256,a=rng()*TAU,l=4+rng()*10;
+    const v=rng()<0.5?150:245;
+    g.strokeStyle='rgba('+v+','+v+','+v+',0.4)';
+    g.lineWidth=1+rng();
+    g.beginPath();g.moveTo(x,y);
+    g.quadraticCurveTo(x+Math.cos(a)*l*0.5,y+Math.sin(a)*l*0.5+2,x+Math.cos(a)*l,y+Math.sin(a)*l);
+    g.stroke();
+  }
+  // foam streaks (thin white lines)
+  for(let i=0;i<40;i++){
+    const x=rng()*256,y=rng()*256,l=15+rng()*35;
+    g.strokeStyle='rgba(255,255,255,0.5)';
+    g.lineWidth=1;
+    g.beginPath();g.moveTo(x,y);g.lineTo(x+l,y+(rng()-0.5)*4);g.stroke();
+  }
+},true);
+// asphalt (cracks + tire marks + patches, mostly light so white markings stay white)
+const asphaltTex=canvasTexture(256,256,(g)=>{
+  g.fillStyle='#d8d8d8';g.fillRect(0,0,256,256);
+  // grain
+  for(let i=0;i<3000;i++){
+    const x=rng()*256,y=rng()*256,v=180+Math.floor(rng()*60);
+    g.fillStyle='rgba('+v+','+v+','+v+',0.5)';
+    g.fillRect(x,y,1.5,1.5);
+  }
+  // cracks (thin dark random walks)
+  for(let i=0;i<14;i++){
+    let x=rng()*256,y=rng()*256;
+    g.strokeStyle='rgba(90,90,90,0.55)';g.lineWidth=1;
+    g.beginPath();g.moveTo(x,y);
+    for(let k=0;k<12;k++){x+=(rng()-0.5)*18;y+=(rng()-0.5)*18;g.lineTo(x,y);}
+    g.stroke();
+  }
+  // tire marks (two dark vertical streaks, along the runway length)
+  for(const cx of [70,186]){
+    for(let i=0;i<24;i++){
+      const x=cx+(rng()-0.5)*14,y=rng()*256;
+      g.fillStyle='rgba(70,70,70,0.18)';
+      g.fillRect(x,y,3+rng()*4,8+rng()*22);
+    }
+  }
+  // patches (darker rectangles)
+  for(let i=0;i<8;i++){
+    g.fillStyle='rgba(110,110,110,0.2)';
+    g.fillRect(rng()*256,rng()*256,20+rng()*40,12+rng()*24);
+  }
+},true);
 
 // ---------- matrices (column-major, like WebGL expects) ----------
 function matIdentity(){return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];}
@@ -611,7 +663,7 @@ function buildTerrain(){
 function buildSea(){
   const m=Mesh();
   meshFlatQuad(m,[-2900,0.6,-1100],[2900,0.6,-1100],[2900,0.6,10100],[-2900,0.6,10100],
-    [0,1,0],0.10,0.48,0.62,null);
+    [0,1,0],0.10,0.48,0.62,[[-2900/150,-1100/150],[2900/150,-1100/150],[2900/150,10100/150],[-2900/150,10100/150]]);
   return meshToGL(m);
 }
 function buildSky(night){
@@ -639,35 +691,36 @@ function buildSky(night){
   return meshToGL(m);
 }
 function buildRunways(){
-  const m=Mesh();
+  const sm=Mesh(); // asphalt strips (textured)
+  const mm=Mesh(); // markings + edge lights (flat, no texture)
   // asphalt strips (09 at z=0 heading +z, 27 at z=9000)
   function strip(cz){
-    meshFlatQuad(m,[-32,2.4,cz-330],[32,2.4,cz-330],[32,2.4,cz+330],[-32,2.4,cz+330],
-      [0,1,0],0.16,0.18,0.21,null);
+    meshFlatQuad(sm,[-32,2.4,cz-330],[32,2.4,cz-330],[32,2.4,cz+330],[-32,2.4,cz+330],
+      [0,1,0],0.16,0.18,0.21,[[-0.5,-5.16],[0.5,-5.16],[0.5,5.16],[-0.5,5.16]]);
     // edge lines
-    meshFlatQuad(m,[-30,2.55,cz-320],[-27,2.55,cz-320],[-27,2.55,cz+320],[-30,2.55,cz+320],[0,1,0],0.9,0.9,0.85,null);
-    meshFlatQuad(m,[27,2.55,cz-320],[30,2.55,cz-320],[30,2.55,cz+320],[27,2.55,cz+320],[0,1,0],0.9,0.9,0.85,null);
+    meshFlatQuad(mm,[-30,2.55,cz-320],[-27,2.55,cz-320],[-27,2.55,cz+320],[-30,2.55,cz+320],[0,1,0],0.9,0.9,0.85,null);
+    meshFlatQuad(mm,[27,2.55,cz-320],[30,2.55,cz-320],[30,2.55,cz+320],[27,2.55,cz+320],[0,1,0],0.9,0.9,0.85,null);
     // centerline dashes
     for(let k=-5;k<=5;k++){
       const dz=k*55;
-      meshFlatQuad(m,[-2,2.55,cz+dz-18],[2,2.55,cz+dz-18],[2,2.55,cz+dz+18],[-2,2.55,cz+dz+18],[0,1,0],0.95,0.95,0.9,null);
+      meshFlatQuad(mm,[-2,2.55,cz+dz-18],[2,2.55,cz+dz-18],[2,2.55,cz+dz+18],[-2,2.55,cz+dz+18],[0,1,0],0.95,0.95,0.9,null);
     }
     // threshold bars
     for(let k=-3;k<=3;k++){
       const dz=(cz<4500?-300:300);
-      meshFlatQuad(m,[k*8-3,2.55,cz+dz-8],[k*8+3,2.55,cz+dz-8],[k*8+3,2.55,cz+dz+8],[k*8-3,2.55,cz+dz+8],[0,1,0],0.95,0.95,0.9,null);
+      meshFlatQuad(mm,[k*8-3,2.55,cz+dz-8],[k*8+3,2.55,cz+dz-8],[k*8+3,2.55,cz+dz+8],[k*8-3,2.55,cz+dz+8],[0,1,0],0.95,0.95,0.9,null);
     }
     // edge lights: posts + warm lamps along both sides
     for(let k=-5;k<=5;k++){
       const dz=k*55;
       for(const sx of [-38,38]){
-        meshBox(m,sx,3.0,cz+dz,0.5,2.0,0.5,0.25,0.25,0.28);
-        meshSphere(m,sx,4.2,cz+dz,1.1,1.1,1.1,1.0,0.93,0.62,6);
+        meshBox(mm,sx,3.0,cz+dz,0.5,2.0,0.5,0.25,0.25,0.28);
+        meshSphere(mm,sx,4.2,cz+dz,1.1,1.1,1.1,1.0,0.93,0.62,6);
       }
     }
   }
   strip(0);strip(9000);
-  return {mesh:meshToGL(m)};
+  return {strip:meshToGL(sm),marks:meshToGL(mm)};
 }
 // runway number decals (textured quads, drawn separately)
 function buildRunwayNumbers(){
@@ -886,7 +939,9 @@ const terrainGL=buildTerrain();
 const seaGL=buildSea();
 const skyGL=buildSky(false);
 const nightSkyGL=buildSky(true);
-const runwayGL=buildRunways().mesh;
+const runwayParts=buildRunways();
+const runwayStripGL=runwayParts.strip;
+const runwayMarksGL=runwayParts.marks;
 const runwayNums=buildRunwayNumbers();
 const palmGL=buildPalms();
 const bushGL=buildBushes();
@@ -1170,9 +1225,10 @@ function render(){
   drawMesh(S.mission==='night'?nightSkyGL:skyGL,matTranslate(eye[0],eye[1],eye[2]),{noFog:true});
   gl.depthMask(true);
   // sea (specular) then terrain
-  drawMesh(seaGL,ident,{spec:0.55});
+  drawMesh(seaGL,ident,{spec:0.55,tex:waterTex});
   drawMesh(terrainGL,ident,{tex:detailTex});
-  drawMesh(runwayGL,ident,{});
+  drawMesh(runwayStripGL,ident,{tex:asphaltTex});
+  drawMesh(runwayMarksGL,ident,{});
   drawMesh(runwayNums.n09,ident,{tex:tex09,alpha:0.95});
   drawMesh(runwayNums.n27,ident,{tex:tex27,alpha:0.95});
   drawMesh(palmGL,ident,{});
