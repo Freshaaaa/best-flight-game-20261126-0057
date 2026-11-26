@@ -2,7 +2,7 @@
   {
     "file": "screenshots/1-takeoff.png",
     "scene": "takeoff",
-    "bytes": 224994
+    "bytes": 224945
   },
   {
     "file": "screenshots/2-ring.png",
@@ -12,7 +12,7 @@
   {
     "file": "screenshots/3-landing.png",
     "scene": "landing",
-    "bytes": 171603
+    "bytes": 167252
   },
   {
     "file": "screenshots/4-cockpit.png",
