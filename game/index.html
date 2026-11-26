@@ -124,6 +124,15 @@ function groundY(x,z){
   const d0=Math.hypot(x,z),d1=Math.hypot(x,z-9000);
   if(d0<420)h=lerp(2,h,sstep(200,420,d0));
   if(d1<420)h=lerp(2,h,sstep(200,420,d1));
+  // runway corridors: keep the strips flat along their full length
+  // (the circular plateaus alone let the terrain rise past the strip ends)
+  for(const cz of [0,9000]){
+    const dz=Math.abs(z-cz);
+    if(dz<370&&Math.abs(x)<90){
+      const k=Math.max(sstep(55,90,Math.abs(x)),sstep(330,370,dz));
+      h=lerp(2,h,k);
+    }
+  }
   return h;
 }
 function groundNormal(x,z){
@@ -241,6 +250,17 @@ function textTexture(txt,fg,bg){
 }
 const tex09=textTexture('09','#ffffff',null);
 const tex27=textTexture('27','#ffffff',null);
+// airport terminal signs (canvas top = v 0, no FLIP_Y)
+function signTexture(txt){
+  return canvasTexture(512,128,(g)=>{
+    g.fillStyle='#0b3d91';g.fillRect(0,0,512,128);
+    g.fillStyle='#ffffff';g.font='bold 56px Arial,sans-serif';
+    g.textAlign='center';g.textBaseline='middle';
+    g.fillText(txt,256,66);
+  });
+}
+const texBintang=signTexture('PULAU BINTANG');
+const texKarang=signTexture('PULAU KARANG');
 const texNusa=canvasTexture(512,96,(g)=>{
   g.fillStyle='#c81e2b';g.font='bold 64px Arial,sans-serif';
   g.textAlign='center';g.textBaseline='middle';g.fillText('NUSA-1',256,50);
@@ -535,8 +555,8 @@ function buildRunways(){
     for(let k=-5;k<=5;k++){
       const dz=k*55;
       for(const sx of [-38,38]){
-        meshBox(m,sx,3.4,cz+dz,0.5,2.0,0.5,0.25,0.25,0.28);
-        meshSphere(m,sx,4.6,cz+dz,1.1,1.1,1.1,1.0,0.93,0.62,6);
+        meshBox(m,sx,3.0,cz+dz,0.5,2.0,0.5,0.25,0.25,0.28);
+        meshSphere(m,sx,4.2,cz+dz,1.1,1.1,1.1,1.0,0.93,0.62,6);
       }
     }
   }
@@ -546,9 +566,9 @@ function buildRunways(){
 // runway number decals (textured quads, drawn separately)
 function buildRunwayNumbers(){
   const m09=Mesh();
-  meshFlatQuad(m09,[-16,2.7,-240],[16,2.7,-240],[16,2.7,-296],[-16,2.7,-296],[0,1,0],1,1,1,[[0,1],[1,1],[1,0],[0,0]]);
+  meshFlatQuad(m09,[-16,2.7,-240],[16,2.7,-240],[16,2.7,-296],[-16,2.7,-296],[0,1,0],1,1,1,[[1,0],[0,0],[0,1],[1,1]]);
   const m27=Mesh();
-  meshFlatQuad(m27,[-16,2.7,9296],[16,2.7,9296],[16,2.7,9240],[-16,2.7,9240],[0,1,0],1,1,1,[[0,1],[1,1],[1,0],[0,0]]);
+  meshFlatQuad(m27,[-16,2.7,9296],[16,2.7,9296],[16,2.7,9240],[-16,2.7,9240],[0,1,0],1,1,1,[[1,0],[0,0],[0,1],[1,1]]);
   return {n09:meshToGL(m09),n27:meshToGL(m27)};
 }
 function buildBushes(){
@@ -560,16 +580,16 @@ function buildBushes(){
   }
   return meshToGL(m);
 }
-// control tower + hangar + windsock beside each runway
+// the airport: control tower, terminal with sign, apron, taxiway, hangar, windsock
 function buildAirport(){
   const m=Mesh();
-  function tower(cx,cz){
+  function tower(cx,cz,h){
     const gy=groundY(cx,cz);
-    meshCylinder(m,cx,gy+15,cz,2.6,3.4,30,0.92,0.92,0.90,8);
-    meshBox(m,cx,gy+32,cz,11,5,11,0.35,0.62,0.85);
-    meshBox(m,cx,gy+35.5,cz,11.5,1,11.5,0.75,0.15,0.18);
-    meshBox(m,cx,gy+39,cz,0.4,6,0.4,0.3,0.3,0.32);
-    meshSphere(m,cx,gy+42.5,cz,0.9,0.9,0.9,1.0,0.3,0.2,6);
+    meshCylinder(m,cx,gy+h/2,cz,2.6,3.4,h,0.92,0.92,0.90,8);
+    meshBox(m,cx,gy+h+2,cz,11,5,11,0.35,0.62,0.85);
+    meshBox(m,cx,gy+h+5.5,cz,11.5,1,11.5,0.75,0.15,0.18);
+    meshBox(m,cx,gy+h+9,cz,0.4,6,0.4,0.3,0.3,0.32);
+    meshSphere(m,cx,gy+h+12.5,cz,0.9,0.9,0.9,1.0,0.3,0.2,6);
   }
   function hangar(cx,cz){
     const gy=groundY(cx,cz);
@@ -583,9 +603,32 @@ function buildAirport(){
     meshBox(m,cx+2,gy+9,cz,4.5,1.1,1.1,1.0,0.55,0.15);
     meshSphere(m,cx+4.4,gy+9,cz,0.7,0.7,0.7,1.0,0.55,0.15,6);
   }
-  tower(75,9050);tower(75,-80);
-  hangar(-88,9120);hangar(-88,-140);
-  windsock(55,8850);windsock(55,250);
+  function terminal(cx,cz,w,h,d,signTex){
+    const gy=groundY(cx,cz);
+    meshBox(m,cx,gy+h/2,cz,w,h,d,0.88,0.87,0.84); // main hall
+    meshBox(m,cx-w/2-0.3,gy+h*0.32,cz,0.6,h*0.55,d*0.85,0.35,0.62,0.85); // glass band, runway side
+    meshBox(m,cx,gy+h-0.8,cz,w+1,1.2,d+1,0.78,0.12,0.16); // red trim
+    meshBox(m,cx,gy+h+0.6,cz,w+2,1.2,d+2,0.55,0.58,0.62); // roof slab
+    // sign on the runway-facing wall (viewer looks +x, their right is +z)
+    const sx=cx-w/2-0.7, sy0=gy+h*0.62, sy1=gy+h*0.92, sz0=cz-d*0.28, sz1=cz+d*0.28;
+    meshFlatQuad(m,[sx,sy1,sz0],[sx,sy1,sz1],[sx,sy0,sz1],[sx,sy0,sz0],[-1,0,0],1,1,1,[[0,0],[1,0],[1,1],[0,1]],signTex);
+  }
+  // Pulau Bintang (Runway 27) — the main airport
+  tower(68,8950,45);
+  terminal(80,9100,46,14,30,texBintang);
+  meshBox(m,43.5,2.2,9120,21,0.8,120,0.55,0.55,0.56); // apron
+  meshBox(m,42,2.2,9046,24,0.8,32,0.42,0.42,0.44); // taxiway 27
+  meshFlatQuad(m,[38,2.65,9080],[50,2.65,9080],[50,2.65,9082],[38,2.65,9082],[0,1,0],0.95,0.95,0.9,null,null);
+  meshFlatQuad(m,[38,2.65,9136],[50,2.65,9136],[50,2.65,9138],[38,2.65,9138],[0,1,0],0.95,0.95,0.9,null,null);
+  hangar(-88,9120);
+  windsock(55,8850);
+  // Pulau Karang (Runway 09) — smaller terminal
+  tower(75,-80,30);
+  terminal(72,-100,30,10,20,texKarang);
+  meshBox(m,43.5,2.2,-100,21,0.8,60,0.55,0.55,0.56); // apron
+  meshBox(m,42,2.2,-145,24,0.8,34,0.42,0.42,0.44); // taxiway 09
+  hangar(-88,-140);
+  windsock(55,250);
   return meshToGL(m);
 }
 function buildPalms(){
@@ -971,6 +1014,13 @@ function render(){
   const park2=matMul(matTranslate(58,groundY(58,-180)+2,-180),matMul(matRotY(-2.4),matScale(0.9,0.9,0.9)));
   drawMesh(planeGL,park2,{spec:0.35});
   drawMesh(propGL,matMul(park2,matMul(matTranslate(0,0.4,7.15),matRotZ(2.1))),{});
+  // two more parked on the Bintang apron
+  const park3=matMul(matTranslate(44,groundY(44,9090)+2,9090),matMul(matRotY(1.4),matScale(0.9,0.9,0.9)));
+  drawMesh(planeGL,park3,{spec:0.35});
+  drawMesh(propGL,matMul(park3,matMul(matTranslate(0,0.4,7.15),matRotZ(0.5))),{});
+  const park4=matMul(matTranslate(44,groundY(44,9145)+2,9145),matMul(matRotY(-1.4),matScale(0.9,0.9,0.9)));
+  drawMesh(planeGL,park4,{spec:0.35});
+  drawMesh(propGL,matMul(park4,matMul(matTranslate(0,0.4,7.15),matRotZ(2.1))),{});
   // plane shadow on the ground below
   const gy=groundY(S.x,S.z);
   const alt=Math.max(0,S.y-gy);
