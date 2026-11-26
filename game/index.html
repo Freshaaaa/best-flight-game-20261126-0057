@@ -485,13 +485,24 @@ function terrainColor(x,z,h,ny){
 }
 function buildTerrain(){
   const m=Mesh();
-  const NX=64,NZ=72,x0=-2600,x1=2600,z0=-800,z1=9800;
+  // Fine grid near the runways (|x|<140, z within 420 of a strip) so the
+  // terrain mesh cannot slope up through the flat runway strips: the
+  // corridor is only 110 wide, narrower than the old 81-unit grid step.
+  const xs=[];
+  for(let x=-2600;x<=2600;x+=81.25)xs.push(x);
+  for(let x=-140;x<=140;x+=20)xs.push(x);
+  const xsU=[...new Set(xs.map(v=>Math.round(v*1000)/1000))].sort((a,b)=>a-b);
+  const zs=[];
+  for(let z=-800;z<=9800;z+=147)zs.push(z);
+  for(const cz of [0,9000])for(let z=cz-420;z<=cz+420;z+=30)zs.push(z);
+  const zsU=[...new Set(zs.map(v=>Math.round(v*1000)/1000))].sort((a,b)=>a-b);
+  const NX=xsU.length-1,NZ=zsU.length-1;
   const grid=[];
   for(let j=0;j<=NZ;j++){
     const row=[];
-    const z=z0+(z1-z0)*j/NZ;
+    const z=zsU[j];
     for(let i=0;i<=NX;i++){
-      const x=x0+(x1-x0)*i/NX;
+      const x=xsU[i];
       const h=groundY(x,z);
       const n=groundNormal(x,z);
       const c=terrainColor(x,z,h,n[1]);
