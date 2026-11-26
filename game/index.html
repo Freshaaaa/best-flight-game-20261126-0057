@@ -1328,7 +1328,7 @@ addEventListener('mousemove',e=>{mouseX=e.clientX/innerWidth;mouseActive=perform
 const scene=qs.get('scene');
 if(scene==='takeoff'){S.started=true;S.mode='flying';S.x=300;S.y=130;S.z=-450;S.heading=-0.45;S.speed=25;S.throttle=0.3;S.pitch=-0.02;}
 else if(scene==='ring'){S.started=true;S.mode='flying';S.x=380;S.y=230;S.z=2700;S.heading=0.2;S.pitch=-0.02;S.speed=70;S.throttle=0.7;S.nextRing=2;S.rings=2;S.score=200;}
-else if(scene==='landing'){S.started=true;S.mode='flying';S.x=0;S.y=55;S.z=8435;S.speed=40;S.throttle=0.3;S.pitch=-0.06;S.nextRing=8;}
+else if(scene==='landing'){S.started=true;S.mode='flying';S.x=0;S.y=55;S.z=8700;S.speed=40;S.throttle=0.3;S.pitch=-0.06;S.nextRing=8;}
 else if(scene==='cockpit'){S.started=true;S.view='cockpit';S.throttle=0.6;S.speed=30;}
 
 // ---------- main loop ----------
