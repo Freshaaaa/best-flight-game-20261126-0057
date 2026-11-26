@@ -93,6 +93,20 @@ for(let i=0;i<10;i++){
   const near=i<5;
   PALMS.push({x:side*(55+((i*37)%40)),z:near?-260+((i*53)%480):8680+((i*61)%520),h:14+((i*13)%10),lean:(rng()-0.5)*0.25});
 }
+// extra palms crowding both runway islands
+for(let i=0;i<6;i++){
+  const near=i<3;
+  PALMS.push({x:(i%2?1:-1)*(70+((i*29)%50)),z:near?-300+((i*71)%560):8620+((i*83)%640),h:12+((i*17)%10),lean:(rng()-0.5)*0.3});
+}
+// bushes scattered on the islands (never on a runway strip)
+const BUSHES=[];
+for(let i=0;i<48;i++){
+  const isl=ISLANDS[Math.floor(rng()*ISLANDS.length)];
+  const a=rng()*TAU,d=Math.sqrt(rng())*isl[2]*0.85;
+  const x=isl[0]+Math.cos(a)*d,z=isl[1]+Math.sin(a)*d;
+  if(Math.abs(x)<48&&((z>-360&&z<360)||(z>8640&&z<9360)))continue;
+  BUSHES.push({x:x,z:z,s:2.5+rng()*3.5});
+}
 
 // terrain height (also used for collision + shadow)
 function groundY(x,z){
@@ -433,7 +447,12 @@ function terrainColor(x,z,h,ny){
   if(h<0.5){ // seabed: sand fading to teal
     const t=clamp(-h/18,0,1);
     r=lerp(0.85,0.16,t);g=lerp(0.76,0.42,t);b=lerp(0.55,0.42,t);
-  }else if(h<7){r=0.90;g=0.81;b=0.62;} // sand
+  }else if(h<7){ // sand with grass tufts + tone patches
+    const t=vnoise(x*0.09+31,z*0.09+17);
+    if(t>0.66){r=0.42;g=0.55;b=0.26;}
+    else if(t<0.3){r=0.80;g=0.70;b=0.50;}
+    else{r=0.90;g=0.81;b=0.62;}
+  }
   else if(h<75){ // jungle grass with speckle
     const v=0.92+n*0.16;
     r=0.30*v;g=0.58*v;b=0.24*v;
@@ -512,6 +531,14 @@ function buildRunways(){
       const dz=(cz<4500?-300:300);
       meshFlatQuad(m,[k*8-3,2.55,cz+dz-8],[k*8+3,2.55,cz+dz-8],[k*8+3,2.55,cz+dz+8],[k*8-3,2.55,cz+dz+8],[0,1,0],0.95,0.95,0.9,null);
     }
+    // edge lights: posts + warm lamps along both sides
+    for(let k=-5;k<=5;k++){
+      const dz=k*55;
+      for(const sx of [-38,38]){
+        meshBox(m,sx,3.4,cz+dz,0.5,2.0,0.5,0.25,0.25,0.28);
+        meshSphere(m,sx,4.6,cz+dz,1.1,1.1,1.1,1.0,0.93,0.62,6);
+      }
+    }
   }
   strip(0);strip(9000);
   return {mesh:meshToGL(m)};
@@ -523,6 +550,43 @@ function buildRunwayNumbers(){
   const m27=Mesh();
   meshFlatQuad(m27,[-16,2.7,9296],[16,2.7,9296],[16,2.7,9240],[-16,2.7,9240],[0,1,0],1,1,1,[[0,1],[1,1],[1,0],[0,0]]);
   return {n09:meshToGL(m09),n27:meshToGL(m27)};
+}
+function buildBushes(){
+  const m=Mesh();
+  for(const b of BUSHES){
+    const gy=groundY(b.x,b.z);
+    meshSphere(m,b.x,gy+b.s*0.5,b.z,b.s,b.s*0.7,b.s,0.20,0.44,0.16,6);
+    meshSphere(m,b.x+b.s*0.5,gy+b.s*0.35,b.z+b.s*0.3,b.s*0.6,b.s*0.45,b.s*0.6,0.24,0.50,0.18,6);
+  }
+  return meshToGL(m);
+}
+// control tower + hangar + windsock beside each runway
+function buildAirport(){
+  const m=Mesh();
+  function tower(cx,cz){
+    const gy=groundY(cx,cz);
+    meshCylinder(m,cx,gy+15,cz,2.6,3.4,30,0.92,0.92,0.90,8);
+    meshBox(m,cx,gy+32,cz,11,5,11,0.35,0.62,0.85);
+    meshBox(m,cx,gy+35.5,cz,11.5,1,11.5,0.75,0.15,0.18);
+    meshBox(m,cx,gy+39,cz,0.4,6,0.4,0.3,0.3,0.32);
+    meshSphere(m,cx,gy+42.5,cz,0.9,0.9,0.9,1.0,0.3,0.2,6);
+  }
+  function hangar(cx,cz){
+    const gy=groundY(cx,cz);
+    meshBox(m,cx,gy+5,cz,34,10,22,0.82,0.83,0.85);
+    meshBox(m,cx,gy+10.8,cz,36,1.6,24,0.55,0.58,0.62);
+    meshBox(m,cx+17.2,gy+5,cz,0.6,8,18,0.78,0.12,0.16);
+  }
+  function windsock(cx,cz){
+    const gy=groundY(cx,cz);
+    meshCylinder(m,cx,gy+4.5,cz,0.25,0.35,9,0.7,0.7,0.72,6);
+    meshBox(m,cx+2,gy+9,cz,4.5,1.1,1.1,1.0,0.55,0.15);
+    meshSphere(m,cx+4.4,gy+9,cz,0.7,0.7,0.7,1.0,0.55,0.15,6);
+  }
+  tower(75,9050);tower(75,-80);
+  hangar(-88,9120);hangar(-88,-140);
+  windsock(55,8850);windsock(55,250);
+  return meshToGL(m);
 }
 function buildPalms(){
   const m=Mesh();
@@ -618,6 +682,8 @@ const skyGL=buildSky();
 const runwayGL=buildRunways().mesh;
 const runwayNums=buildRunwayNumbers();
 const palmGL=buildPalms();
+const bushGL=buildBushes();
+const airportGL=buildAirport();
 const ringGLs=RINGS.map(buildRingMesh);
 const planeGL=buildPlane();
 const propGL=buildProp();
@@ -872,6 +938,8 @@ function render(){
   drawMesh(runwayNums.n09,ident,{tex:tex09,alpha:0.95});
   drawMesh(runwayNums.n27,ident,{tex:tex27,alpha:0.95});
   drawMesh(palmGL,ident,{});
+  drawMesh(bushGL,ident,{});
+  drawMesh(airportGL,ident,{});
   // rings (passed ones turn pale green)
   for(let i=0;i<8;i++){
     if(RINGS[i].passed){
@@ -896,6 +964,13 @@ function render(){
     drawMesh(propGL,propModel,{});
     drawMesh(propDiscGL,matMul(planeModel,matTranslate(0,0.4,7.2)),{tex:blobTex,alpha:0.22});
   }
+  // parked planes beside each runway (static, no collision)
+  const park1=matMul(matTranslate(-58,groundY(-58,9150)+2,9150),matMul(matRotY(0.6),matScale(0.9,0.9,0.9)));
+  drawMesh(planeGL,park1,{spec:0.35});
+  drawMesh(propGL,matMul(park1,matMul(matTranslate(0,0.4,7.15),matRotZ(0.5))),{});
+  const park2=matMul(matTranslate(58,groundY(58,-180)+2,-180),matMul(matRotY(-2.4),matScale(0.9,0.9,0.9)));
+  drawMesh(planeGL,park2,{spec:0.35});
+  drawMesh(propGL,matMul(park2,matMul(matTranslate(0,0.4,7.15),matRotZ(2.1))),{});
   // plane shadow on the ground below
   const gy=groundY(S.x,S.z);
   const alt=Math.max(0,S.y-gy);
