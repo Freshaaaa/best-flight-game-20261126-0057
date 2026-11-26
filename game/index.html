@@ -1224,9 +1224,9 @@ function render(){
   const gy=groundY(S.x,S.z);
   const alt=Math.max(0,S.y-gy);
   if(alt<500){
-    const sc=14+alt*0.02;
+    const sc=12+alt*0.15;
     const shModel=matMul(matTranslate(S.x,gy+0.6,S.z),matScale(sc,1,sc));
-    drawMesh(shadowGL,shModel,{tex:blobTex,alpha:clamp(0.5-alt/900,0.06,0.5)});
+    drawMesh(shadowGL,shModel,{tex:blobTex,alpha:clamp(0.4-alt*0.007,0.05,0.4)});
   }
   // contact shadows under the airport structures + palms (grounds them)
   blobShadow(80,9100,32,22,0.28); // Bintang terminal
