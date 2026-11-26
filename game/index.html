@@ -43,7 +43,7 @@ const S={
   x:0,y:2,z:-40,heading:0,pitch:0,bank:0,speed:0,throttle:0,
   rings:0,score:0,time:0,vspeed:0,nextRing:0,
   crashed:false,landed:false,msg:'',msgT:0,fps:0,propAngle:0,
-  muted:false,newBest:false,
+  muted:false,newBest:false,mission:'day',engOut:false,landBonus:0,
 };
 window.S=S;
 // best time (localStorage, survives reloads; silent if unavailable)
@@ -56,10 +56,13 @@ function resetState(){
   S.x=0;S.y=2;S.z=-40;S.heading=0;S.pitch=0;S.bank=0;S.speed=0;S.throttle=0;
   S.rings=0;S.score=0;S.time=0;S.vspeed=0;S.nextRing=0;
   S.crashed=false;S.landed=false;S.msg='';S.msgT=0;S.propAngle=0;
-  S.newBest=false;TRAIL.length=0;trailT=0;
+  S.newBest=false;S.engOut=false;S.landBonus=0;TRAIL.length=0;trailT=0;
   for(const r of RINGS)r.passed=false;
   for(const b of BIRDS){b.x=b.x0;b.y=b.y0;b.z=b.z0;}
 }
+const MISSION_NAMES={day:'SIANG',night:'MALAM',storm:'BADAI',emergency:'DARURAT'};
+const MOON_DIR=[-0.4,0.45,-0.55];
+const STARS=[];
 function flash(t){S.msg=t;S.msgT=3;}
 
 // ---------- audio (WebAudio, no files; starts on first gesture) ----------
@@ -80,7 +83,7 @@ function audioInit(){
 function audioTick(){
   if(!AC||!engOsc)return;
   if(AC.state==='suspended')AC.resume().catch(()=>{});
-  const on=S.started&&!S.paused&&!S.muted;
+  const on=S.started&&!S.paused&&!S.muted&&!S.engOut;
   engGain.gain.setTargetAtTime(on?0.015+S.throttle*0.05:0,AC.currentTime,0.1);
   engOsc.frequency.setTargetAtTime(50+S.throttle*55+S.speed*0.15,AC.currentTime,0.1);
 }
@@ -151,6 +154,11 @@ for(let i=0;i<48;i++){
   const x=isl[0]+Math.cos(a)*d,z=isl[1]+Math.sin(a)*d;
   if(Math.abs(x)<48&&((z>-360&&z<360)||(z>8640&&z<9360)))continue;
   BUSHES.push({x:x,z:z,s:2.5+rng()*3.5});
+}
+// night-sky stars (seeded, after the world so the layout does not shift)
+for(let i=0;i<60;i++){
+  const a=rng()*TAU,el=0.15+rng()*1.2;
+  STARS.push({dx:Math.cos(el)*Math.cos(a),dy:Math.sin(el),dz:Math.cos(el)*Math.sin(a),s:2+rng()*4});
 }
 
 // terrain height (also used for collision + shadow)
@@ -224,7 +232,7 @@ varying vec3 vCol;varying vec3 vNor;varying vec3 vWp;varying vec2 vUV;varying fl
 void main(){
   vec3 n=normalize(vNor);
   float dif=max(dot(n,normalize(uSun)),0.0);
-  vec3 col=vCol*(0.52+0.48*dif);
+  vec3 col=vCol*(0.38+0.62*dif);
   if(vSpec>0.01){
     vec3 vd=normalize(uCam-vWp);
     vec3 r=reflect(-normalize(uSun),n);
@@ -265,7 +273,7 @@ gl.uniform1i(U.uTex,0);
 const whiteTex=gl.createTexture();
 gl.bindTexture(gl.TEXTURE_2D,whiteTex);
 gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([255,255,255,255]));
-function canvasTexture(w,h,draw){
+function canvasTexture(w,h,draw,repeat){
   const c=document.createElement('canvas');c.width=w;c.height=h;
   draw(c.getContext('2d'),w,h);
   const t=gl.createTexture();
@@ -273,8 +281,8 @@ function canvasTexture(w,h,draw){
   gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c);
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,repeat?gl.REPEAT:gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,repeat?gl.REPEAT:gl.CLAMP_TO_EDGE);
   return t;
 }
 // soft round blob (clouds, shadow, sun glow)
@@ -285,6 +293,25 @@ const blobTex=canvasTexture(128,128,(g)=>{
   gr.addColorStop(1,'rgba(255,255,255,0)');
   g.fillStyle=gr;g.fillRect(0,0,128,128);
 });
+// terrain detail (grain): grayscale noise, multiplies the vertex colors
+// (uses the seeded rng, not Math.random, so the world stays deterministic)
+const detailTex=canvasTexture(128,128,(g)=>{
+  const img=g.createImageData(128,128);
+  for(let i=0;i<128*128;i++){
+    const v=200+Math.floor(rng()*55);
+    img.data[i*4]=v;img.data[i*4+1]=v;img.data[i*4+2]=v;img.data[i*4+3]=255;
+  }
+  g.putImageData(img,0,0);
+  // soft blotches so the grain is not uniform
+  for(let i=0;i<40;i++){
+    const x=rng()*128,y=rng()*128,r=6+rng()*18;
+    const gr=g.createRadialGradient(x,y,0,x,y,r);
+    const v=rng()<0.5?170:235;
+    gr.addColorStop(0,'rgba('+v+','+v+','+v+',0.25)');
+    gr.addColorStop(1,'rgba('+v+','+v+','+v+',0)');
+    g.fillStyle=gr;g.beginPath();g.arc(x,y,r,0,TAU);g.fill();
+  }
+},true);
 function textTexture(txt,fg,bg){
   return canvasTexture(256,128,(g)=>{
     if(bg){g.fillStyle=bg;g.fillRect(0,0,256,128);}
@@ -557,7 +584,7 @@ function buildTerrain(){
       const h=groundY(x,z);
       const n=groundNormal(x,z);
       const c=terrainColor(x,z,h,n[1]);
-      row.push(meshVert(m,x,h,z,c[0],c[1],c[2],n[0],n[1],n[2],0,0));
+      row.push(meshVert(m,x,h,z,c[0],c[1],c[2],n[0],n[1],n[2],x/150,z/150));
     }
     grid.push(row);
   }
@@ -572,7 +599,7 @@ function buildSea(){
     [0,1,0],0.10,0.48,0.62,null);
   return meshToGL(m);
 }
-function buildSky(){
+function buildSky(night){
   const m=Mesh();
   const seg=18,rows=10,R=11500;
   const grid=[];
@@ -582,9 +609,11 @@ function buildSky(){
     for(let i=0;i<=seg;i++){
       const ph=i/seg*TAU;
       const nx=Math.sin(th)*Math.cos(ph),ny=Math.cos(th),nz=Math.sin(th)*Math.sin(ph);
-      // gradient: zenith deep blue -> horizon pale
+      // gradient: zenith deep blue -> horizon pale (night: near-black -> dark blue)
       const t=clamp(1-ny,0,1);
-      const r=lerp(0.10,0.86,Math.pow(t,1.4)),g=lerp(0.42,0.93,Math.pow(t,1.4)),b=lerp(0.85,0.98,Math.pow(t,1.2));
+      const r=night?lerp(0.01,0.07,Math.pow(t,1.4)):lerp(0.10,0.86,Math.pow(t,1.4));
+      const g=night?lerp(0.02,0.11,Math.pow(t,1.4)):lerp(0.42,0.93,Math.pow(t,1.4));
+      const b=night?lerp(0.06,0.22,Math.pow(t,1.2)):lerp(0.85,0.98,Math.pow(t,1.2));
       row.push(meshVert(m,nx*R,ny*R,nz*R,r,g,b,0,0,1,0,0));
     }
     grid.push(row);
@@ -706,6 +735,14 @@ function buildAirport(){
   windsock(55,250);
   return meshToGL(m);
 }
+function buildTruck(){
+  const m=Mesh();
+  meshBox(m,0,2,0,3,2.5,7,0.85,0.85,0.88); // tank (silver)
+  meshBox(m,0,2.2,4.5,3,2.8,2.5,0.78,0.12,0.16); // cab (red)
+  for(const sx of [-1.4,1.4])for(const sz of [2.5,-2.5])
+    meshBox(m,sx,0.5,sz,0.4,1,1.2,0.1,0.1,0.12); // wheels
+  return meshToGL(m);
+}
 function buildPalms(){
   const m=Mesh();
   for(const p of PALMS){
@@ -796,7 +833,8 @@ function buildNameDecals(){
 
 const terrainGL=buildTerrain();
 const seaGL=buildSea();
-const skyGL=buildSky();
+const skyGL=buildSky(false);
+const nightSkyGL=buildSky(true);
 const runwayGL=buildRunways().mesh;
 const runwayNums=buildRunwayNumbers();
 const palmGL=buildPalms();
@@ -807,6 +845,7 @@ const planeGL=buildPlane();
 const propGL=buildProp();
 const propDiscGL=buildPropDisc();
 const nameGL=buildNameDecals();
+const truckGL=buildTruck();
 
 // dynamic sprite buffer (clouds + sun + plane shadow) — one draw call
 const SPRITE_MAX=140;
@@ -934,8 +973,8 @@ const keys={};
 let mouseX=0.5,mouseActive=0;
 function update(dt){
   if(!S.started||S.paused||S.crashed||S.landed)return;
-  if(keys['Shift'])S.throttle=clamp(S.throttle+0.4*dt,0,1);
-  if(keys['Control'])S.throttle=clamp(S.throttle-0.5*dt,0,1);
+  if(keys['Shift']&&!S.engOut)S.throttle=clamp(S.throttle+0.4*dt,0,1);
+  if(keys['Control']&&!S.engOut)S.throttle=clamp(S.throttle-0.5*dt,0,1);
   const pitchUp=keys['ArrowUp']||keys['w']||keys['W'];
   const pitchDown=keys['ArrowDown']||keys['s']||keys['S'];
   if(S.mode==='flying'||S.speed>40){
@@ -983,10 +1022,16 @@ function update(dt){
     }
   }
   const gy=groundY(S.x,S.z);
+  // emergency mission: the engine dies mid-route, glide to Runway 27
+  if(S.mission==='emergency'&&!S.engOut&&S.mode==='flying'&&S.z>4500){
+    S.engOut=true;S.throttle=0;
+    flash('MESIN MATI! MENDARAT DARURAT');
+    beep(440,220,0.4,'sawtooth',0.2,0);
+  }
   const inRwy27=Math.abs(S.x)<130&&S.z>8650&&S.z<9350;
   if(S.mode==='flying'&&inRwy27&&S.y<=gy+4&&S.vspeed>-8&&S.speed<75){
     S.mode='done';S.landed=true;S.y=gy+2;
-    const bonus=500+50*S.rings;S.score+=bonus;
+    const bonus=500+50*S.rings+(S.mission==='emergency'&&S.engOut?200:0);S.score+=bonus;S.landBonus=bonus;
     flash('MENDARAT! +'+bonus);
     jingleLand();
     if(!BEST||S.time<BEST){BEST=S.time;S.newBest=true;try{localStorage.setItem('archipelago-best',String(BEST));}catch(e){}}
@@ -999,7 +1044,7 @@ function update(dt){
   if(S.z>9600)S.z=9600;
   if(S.y>1200)S.y=1200;
   for(const b of BIRDS){b.z+=b.sp*dt;b.x+=Math.sin(S.time*0.3+b.ph)*2*dt;if(b.z>9500)b.z=200;}
-  for(const c of CLOUDS){c.x+=c.drift*dt;if(c.x>2400)c.x=-2400;}
+  for(const c of CLOUDS){c.x+=c.drift*(S.mission==='storm'?2.5:1)*dt;if(c.x>2400)c.x=-2400;}
   if(S.msgT>0)S.msgT-=dt;
   // contrail: record the tail while flying, clear on the ground
   if(S.mode==='flying'&&S.speed>20){
@@ -1025,9 +1070,16 @@ function project(x,y,z){
   if(nz<-1||nz>1)return null;
   return {x:(nx+1)/2*W,y:(1-ny)/2*H,behind:v[2]>-0.5};
 }
+// contact shadow: soft blob on the ground under a structure
+function blobShadow(x,z,sx,sz,a){
+  drawMesh(shadowGL,matMul(matTranslate(x,groundY(x,z)+0.55,z),matScale(sx,1,sz)),{tex:blobTex,alpha:a});
+}
 function render(){
   gl.viewport(0,0,glCanvas.width,glCanvas.height);
-  gl.clearColor(0.55,0.78,0.92,1);
+  // sky + fog colors follow the mission (day / night / storm)
+  const mc=S.mission==='night'?{clear:[0.02,0.03,0.08],fog:[0.05,0.08,0.15]}:S.mission==='storm'?{clear:[0.45,0.5,0.55],fog:[0.55,0.58,0.62]}:{clear:[0.55,0.78,0.92],fog:[0.78,0.88,0.94]};
+  gl.clearColor(mc.clear[0],mc.clear[1],mc.clear[2],1);
+  gl.uniform3f(U.uFogCol,mc.fog[0],mc.fog[1],mc.fog[2]);
   gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   const proj=matPerspective(1.05,W/H,0.5,26000);
   lastProj=proj;
@@ -1061,11 +1113,11 @@ function render(){
   const ident=matIdentity();
   // sky dome follows the camera (no fog, no depth write)
   gl.depthMask(false);
-  drawMesh(skyGL,matTranslate(eye[0],eye[1],eye[2]),{noFog:true});
+  drawMesh(S.mission==='night'?nightSkyGL:skyGL,matTranslate(eye[0],eye[1],eye[2]),{noFog:true});
   gl.depthMask(true);
   // sea (specular) then terrain
   drawMesh(seaGL,ident,{spec:0.55});
-  drawMesh(terrainGL,ident,{});
+  drawMesh(terrainGL,ident,{tex:detailTex});
   drawMesh(runwayGL,ident,{});
   drawMesh(runwayNums.n09,ident,{tex:tex09,alpha:0.95});
   drawMesh(runwayNums.n27,ident,{tex:tex27,alpha:0.95});
@@ -1120,14 +1172,51 @@ function render(){
     const shModel=matMul(matTranslate(S.x,gy+0.6,S.z),matScale(sc,1,sc));
     drawMesh(shadowGL,shModel,{tex:blobTex,alpha:clamp(0.5-alt/900,0.06,0.5)});
   }
+  // contact shadows under the airport structures + palms (grounds them)
+  blobShadow(80,9100,32,22,0.28); // Bintang terminal
+  blobShadow(68,8950,10,10,0.28); // Bintang tower
+  blobShadow(-88,9120,24,16,0.28); // Bintang hangar
+  blobShadow(-58,9150,11,11,0.26); // park1
+  blobShadow(44,9090,11,11,0.26); // park3
+  blobShadow(44,9145,11,11,0.26); // park4
+  blobShadow(80,120,22,16,0.28); // Karang terminal
+  blobShadow(68,60,10,10,0.28); // Karang tower
+  blobShadow(-88,120,24,16,0.28); // Karang hangar
+  blobShadow(44,105,11,11,0.26); // park2
+  blobShadow(44,135,11,11,0.26); // park5
+  for(const p of PALMS)blobShadow(p.x,p.z,4,4,0.22);
+  // taxiing plane on the Bintang taxiway (small loop, 6 u/s)
+  const taxiD=(S.time*6)%72;
+  let tx,tz,th;
+  if(taxiD<16){tx=34+taxiD;tz=9035;th=Math.PI/2;}
+  else if(taxiD<36){tx=50;tz=9035+(taxiD-16);th=0;}
+  else if(taxiD<52){tx=50-(taxiD-36);tz=9055;th=-Math.PI/2;}
+  else{tx=34;tz=9055-(taxiD-52);th=Math.PI;}
+  const taxiModel=matMul(matTranslate(tx,groundY(tx,tz)+2,tz),matMul(matRotY(th),matScale(0.9,0.9,0.9)));
+  drawMesh(planeGL,taxiModel,{spec:0.35});
+  drawMesh(propGL,matMul(taxiModel,matMul(matTranslate(0,0.4,7.15),matRotZ(0.5))),{});
+  blobShadow(tx,tz,11,11,0.26);
+  // fuel truck on the Karang service lane (back and forth, 8 u/s)
+  const trT=(S.time*8)%100;
+  const trZ=trT<50?95+trT:145-(trT-50);
+  const trH=trT<50?0:Math.PI;
+  const truckModel=matMul(matTranslate(58,groundY(58,trZ),trZ),matRotY(trH));
+  drawMesh(truckGL,truckModel,{});
+  blobShadow(58,trZ,6,4,0.26);
   // clouds + sun as billboards (far to near)
   const sprites=[];
+  const ct=S.mission==='night'?[0.28,0.31,0.42]:S.mission==='storm'?[0.72,0.75,0.82]:[1,1,1];
   for(const c of CLOUDS){
     const d=Math.hypot(c.x-eye[0],c.y-eye[1],c.z-eye[2]);
-    sprites.push({cx:c.x,cy:c.y,cz:c.z,rx:c.s*1.05,ry:c.s*0.5,r:1,g:1,b:1,d:d});
+    sprites.push({cx:c.x,cy:c.y,cz:c.z,rx:c.s*1.05,ry:c.s*0.5,r:ct[0],g:ct[1],b:ct[2],d:d});
+    // clustered puffs: a fuller, more realistic cloud (darker undersides)
+    const ox1=c.x-c.s*0.55,oy1=c.y-c.s*0.12,oz1=c.z+c.s*0.15;
+    const ox2=c.x+c.s*0.5,oy2=c.y-c.s*0.15,oz2=c.z-c.s*0.1;
+    sprites.push({cx:ox1,cy:oy1,cz:oz1,rx:c.s*0.62,ry:c.s*0.3,r:ct[0]*0.94,g:ct[1]*0.96,b:ct[2],d:Math.hypot(ox1-eye[0],oy1-eye[1],oz1-eye[2])});
+    sprites.push({cx:ox2,cy:oy2,cz:oz2,rx:c.s*0.52,ry:c.s*0.26,r:ct[0]*0.88,g:ct[1]*0.91,b:ct[2]*0.97,d:Math.hypot(ox2-eye[0],oy2-eye[1],oz2-eye[2])});
   }
   sprites.sort((a,b)=>b.d-a.d);
-  drawSprites(sprites,ident,camRight,camUp,0.92);
+  drawSprites(sprites,ident,camRight,camUp,S.mission==='night'?0.85:0.92);
   // contrail puffs behind the plane (older = bigger, softer)
   if(TRAIL.length>2){
     const ts=[];
@@ -1139,10 +1228,48 @@ function render(){
     drawSprites(ts,ident,camRight,camUp,0.26);
   }
   const sunPos=[eye[0]+SUN_DIR[0]*9800,eye[1]+SUN_DIR[1]*9800,eye[2]+SUN_DIR[2]*9800];
-  drawSprites([
-    {cx:sunPos[0],cy:sunPos[1],cz:sunPos[2],rx:900,ry:900,r:1,g:0.95,b:0.75},
-    {cx:sunPos[0],cy:sunPos[1],cz:sunPos[2],rx:420,ry:420,r:1,g:0.98,b:0.85},
-  ],ident,camRight,camUp,0.9);
+  if(S.mission!=='night'){
+    drawSprites([
+      {cx:sunPos[0],cy:sunPos[1],cz:sunPos[2],rx:900,ry:900,r:1,g:0.95,b:0.75},
+      {cx:sunPos[0],cy:sunPos[1],cz:sunPos[2],rx:420,ry:420,r:1,g:0.98,b:0.85},
+    ],ident,camRight,camUp,0.9);
+  }else{
+    // moon + stars (night only)
+    const moonPos=[eye[0]+MOON_DIR[0]*9800,eye[1]+MOON_DIR[1]*9800,eye[2]+MOON_DIR[2]*9800];
+    drawSprites([
+      {cx:moonPos[0],cy:moonPos[1],cz:moonPos[2],rx:700,ry:700,r:0.9,g:0.9,b:0.85},
+      {cx:moonPos[0],cy:moonPos[1],cz:moonPos[2],rx:330,ry:330,r:1,g:1,b:0.95},
+    ],ident,camRight,camUp,0.95);
+    const starSprites=[];
+    for(const st of STARS){
+      starSprites.push({cx:eye[0]+st.dx*9800,cy:eye[1]+st.dy*9800,cz:eye[2]+st.dz*9800,rx:st.s,ry:st.s,r:1,g:1,b:1,d:9800});
+    }
+    drawSprites(starSprites,ident,camRight,camUp,0.9);
+  }
+  // navigation lights on the wingtips + tail (night only)
+  if(S.mission==='night'&&S.view!=='cockpit'){
+    const sh=Math.sin(S.heading),ch=Math.cos(S.heading);
+    const rx=ch*7,rz=-sh*7,fx=sh*7,fz=ch*7;
+    drawSprites([
+      {cx:S.x-rx,cy:S.y+0.4,cz:S.z-rz,rx:2.5,ry:2.5,r:1,g:0.15,b:0.1,d:40},
+      {cx:S.x+rx,cy:S.y+0.4,cz:S.z+rz,rx:2.5,ry:2.5,r:0.15,g:1,b:0.3,d:40},
+      {cx:S.x-fx,cy:S.y+0.4,cz:S.z-fz,rx:2,ry:2,r:1,g:1,b:1,d:40},
+    ],ident,camRight,camUp,0.9);
+  }
+  // runway edge-light glow + blinking tower beacons (brighter at night)
+  const lamps=[];
+  for(const cz of [0,9000])for(let k=-5;k<=5;k++)for(const sx of [-38,38]){
+    lamps.push({cx:sx,cy:4.2,cz:cz+k*55,rx:7,ry:7,r:1,g:0.85,b:0.5,d:Math.hypot(sx-eye[0],4.2-eye[1],cz+k*55-eye[2])});
+  }
+  lamps.sort((a,b)=>b.d-a.d);
+  drawSprites(lamps,ident,camRight,camUp,S.mission==='night'?0.8:0.35);
+  const blink=0.15+0.85*Math.max(0,Math.sin(S.time*2.5));
+  const beacons=[
+    {cx:68,cy:groundY(68,8950)+57.5,cz:8950,rx:10,ry:10,r:blink,g:0.2*blink,b:0.15*blink,d:Math.hypot(68-eye[0],groundY(68,8950)+57.5-eye[1],8950-eye[2])},
+    {cx:68,cy:groundY(68,60)+42.5,cz:60,rx:10,ry:10,r:blink,g:0.2*blink,b:0.15*blink,d:Math.hypot(68-eye[0],groundY(68,60)+42.5-eye[1],60-eye[2])},
+  ];
+  beacons.sort((a,b)=>b.d-a.d);
+  drawSprites(beacons,ident,camRight,camUp,0.85);
   drawBirds();
 }
 
@@ -1232,7 +1359,7 @@ function drawHUD(){
   const ring=S.nextRing<8?RINGS[S.nextRing]:null;
   // --- top bar ---
   panel(10,10,1260,46,0.55);
-  txt('ARCHIPELAGO RUN  ·  NUSA-1',26,33,17,'#9fd8ff','left','800');
+  txt('ARCHIPELAGO RUN  ·  NUSA-1  ·  '+MISSION_NAMES[S.mission],26,33,17,'#9fd8ff','left','800');
   txt('SKOR '+S.score,640,33,19,'#ffd23d','center','800');
   txt('CINCIN '+S.rings+'/8',800,33,16,'#eaf6ff','center','700');
   txt(fmtTime(S.time),1000,33,16,'#eaf6ff','center','700');
@@ -1303,16 +1430,26 @@ function drawHUD(){
     panel(340,225,600,260,0.92);
     txt('MENDARAT DI RUNWAY 27!',640,267,30,'#7dffa8','center','800');
     txt('Cincin: '+S.rings+' × 100  =  '+(S.rings*100),640,305,18,'#eaf6ff','center');
-    txt('Bonus mendarat: 500 + 50 × '+S.rings+'  =  '+(500+50*S.rings),640,333,18,'#eaf6ff','center');
+    txt('Bonus mendarat: 500 + 50 × '+S.rings+(S.mission==='emergency'&&S.engOut?' + 200 darurat':'')+'  =  '+S.landBonus,640,333,18,'#eaf6ff','center');
     txt('SKOR AKHIR: '+S.score,640,367,24,'#ffd23d','center','800');
     txt('WAKTU: '+fmtTime(S.time)+(S.newBest?'   ★ REKOR BARU!':''),640,400,18,'#eaf6ff','center','700');
     txt('WAKTU TERBAIK: '+(BEST!=null?fmtTime(BEST):'-'),640,428,15,'#bfe3ff','center');
     txt('Tekan R untuk terbang lagi',640,460,15,'#bfe3ff','center');
   }
+  // storm rain (2D overlay, on top of the scene)
+  if(S.mission==='storm'&&S.started){
+    hctx.strokeStyle='rgba(200,220,255,0.32)';hctx.lineWidth=1.5;
+    hctx.beginPath();
+    for(let i=0;i<50;i++){
+      const rx=(i*137+S.time*420)%1280,ry=(i*211+S.time*950)%720;
+      hctx.moveTo(rx,ry);hctx.lineTo(rx-5,ry+16);
+    }
+    hctx.stroke();
+  }
 }
 function drawTopStrip(){
   panel(10,10,1260,46,0.55);
-  txt('ARCHIPELAGO RUN  ·  NUSA-1  ·  COCKPIT',26,33,16,'#9fd8ff','left','800');
+  txt('ARCHIPELAGO RUN  ·  NUSA-1  ·  COCKPIT  ·  '+MISSION_NAMES[S.mission],26,33,16,'#9fd8ff','left','800');
   txt('SKOR '+S.score,640,33,19,'#ffd23d','center','800');
   txt('CINCIN '+S.rings+'/8',800,33,16,'#eaf6ff','center','700');
   txt(fmtTime(S.time),1000,33,16,'#eaf6ff','center','700');
@@ -1404,9 +1541,14 @@ function drawStart(){
   txt('ATAS / BAWAH  pitch      KIRI / KANAN  belok      Shift / Ctrl  throttle',640,368,16,'#ffffff','center','700');
   txt('Mouse  belok    ·    C  kokpit    ·    R  ulang    ·    P  jeda',640,396,16,'#ffffff','center','700');
   txt('Cincin +100  ·  Mendarat +500 + 50/cincin',640,432,15,'#ffd23d','center','700');
-  if(BEST!=null)txt('WAKTU TERBAIK: '+fmtTime(BEST),640,464,15,'#7dffa8','center','700');
+  if(BEST!=null)txt('WAKTU TERBAIK: '+fmtTime(BEST),640,492,13,'#7dffa8','center','700');
+  txt('MISI:',400,464,15,'#8fb8d8','left','700');
+  txt('[1] SIANG',470,464,15,S.mission==='day'?'#ffd23d':'#8fb8d8','left','700');
+  txt('[2] MALAM',580,464,15,S.mission==='night'?'#ffd23d':'#8fb8d8','left','700');
+  txt('[3] BADAI',690,464,15,S.mission==='storm'?'#ffd23d':'#8fb8d8','left','700');
+  txt('[4] DARURAT',800,464,15,S.mission==='emergency'?'#ffd23d':'#8fb8d8','left','700');
   const blink=Math.floor(performance.now()/500)%2===0;
-  if(blink)txt('—  KLIK UNTUK TERBANG  —',640,500,24,'#ffffff','center','800');
+  if(blink)txt('—  KLIK UNTUK TERBANG  —',640,520,24,'#ffffff','center','800');
   txt('Dunia deterministik · seed 20261126',640,560,13,'#8fb8d8','center');
 }
 
@@ -1420,6 +1562,12 @@ addEventListener('keydown',e=>{
   if(e.key==='r'||e.key==='R')resetState();
   if(e.key==='p'||e.key==='P')S.paused=!S.paused;
   if(e.key==='m'||e.key==='M'){S.muted=!S.muted;flash(S.muted?'SUARA MATI':'SUARA NYALA');}
+  if(!S.started){
+    if(e.key==='1')S.mission='day';
+    else if(e.key==='2')S.mission='night';
+    else if(e.key==='3')S.mission='storm';
+    else if(e.key==='4')S.mission='emergency';
+  }
 });
 addEventListener('keyup',e=>{keys[e.key]=false;});
 document.getElementById('wrap').addEventListener('mousedown',()=>{
@@ -1430,10 +1578,13 @@ addEventListener('mousemove',e=>{mouseX=e.clientX/innerWidth;mouseActive=perform
 
 // ---------- scene presets ----------
 const scene=qs.get('scene');
+const missionParam=qs.get('mission');
+if(['day','night','storm','emergency'].includes(missionParam))S.mission=missionParam;
 if(scene==='takeoff'){S.started=true;S.mode='flying';S.x=300;S.y=130;S.z=-450;S.heading=-0.45;S.speed=25;S.throttle=0.3;S.pitch=-0.02;}
 else if(scene==='ring'){S.started=true;S.mode='flying';S.x=380;S.y=230;S.z=2700;S.heading=0.2;S.pitch=-0.02;S.speed=70;S.throttle=0.7;S.nextRing=2;S.rings=2;S.score=200;}
 else if(scene==='landing'){S.started=true;S.mode='flying';S.x=0;S.y=55;S.z=8700;S.speed=40;S.throttle=0.3;S.pitch=-0.06;S.nextRing=8;}
 else if(scene==='cockpit'){S.started=true;S.view='cockpit';S.throttle=0.6;S.speed=30;}
+else if(scene==='cover'){S.started=true;S.mode='flying';S.x=250;S.y=260;S.z=650;S.heading=0;S.speed=75;S.throttle=0.55;S.pitch=0;S.nextRing=0;S.rings=0;S.score=0;}
 
 // ---------- main loop ----------
 let lastT=performance.now();
