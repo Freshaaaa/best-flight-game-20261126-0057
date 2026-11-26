@@ -1680,6 +1680,29 @@ function drawHUD(){
     txt('MENUJU RUNWAY 27',1086,182,15,'#ffd23d','left','800');
   }
   txt('BANK '+(S.bank>=0?'+':'')+(S.bank*57.3).toFixed(0)+'°',1086,204,12,'#bfe3ff','left');
+  // --- minimap (bottom-left): archipelago, runways, rings, plane ---
+  panel(10,480,140,200,0.6);
+  txt('PETA',80,500,12,'#8fb8d8','center','700');
+  const msc=160/10600, mX=x=>75+x*msc, mY=z=>510+(z+800)*msc;
+  hctx.fillStyle='#1d4e6b'; hctx.fillRect(20,510,110,160);
+  for(const isl of ISLANDS){
+    hctx.fillStyle='#3f8f3a';
+    hctx.beginPath(); hctx.arc(mX(isl[0]),mY(isl[1]),Math.max(1.5,isl[2]*msc),0,TAU); hctx.fill();
+  }
+  hctx.fillStyle='#ffffff'; // runways (white vertical ticks)
+  for(const cz of [0,9000]) hctx.fillRect(mX(-32),mY(cz-330),64*msc+2,660*msc);
+  for(let i=0;i<8;i++){ // rings: gold, passed = green, next = pulsing
+    const r=RINGS[i];
+    hctx.fillStyle=r.passed?'#37c871':(i===S.nextRing?'#ffd23d':'#c8a83a');
+    hctx.beginPath(); hctx.arc(mX(r.x),mY(r.z),i===S.nextRing?3.5+Math.sin(S.time*4)*1:2.5,0,TAU); hctx.fill();
+  }
+  const fx=Math.sin(S.heading),fz=Math.cos(S.heading),px=mX(S.x),py=mY(S.z);
+  hctx.fillStyle='#ffffff'; // plane triangle, pointing along heading
+  hctx.beginPath();
+  hctx.moveTo(px+fx*6,py+fz*6);
+  hctx.lineTo(px-fx*3-fz*4,py-fz*3+fx*4);
+  hctx.lineTo(px-fx*3+fz*4,py-fz*3-fx*4);
+  hctx.closePath(); hctx.fill();
   // --- next-ring marker (projected) ---
   if(ring){
     const p=project(ring.x,ring.y,ring.z);
