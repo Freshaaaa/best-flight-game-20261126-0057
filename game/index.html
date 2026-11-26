@@ -457,19 +457,13 @@ function drawSeaAndIslands(){
         ctx.beginPath(); ctx.ellipse(px+2, py-10, 7, 3.4, 0.5, 0, 6.283); ctx.fill();
       }
     }
-    // Hill cap + a darker jungle thicket for tall islands (no grey rock
-    // blob — a hard ellipse reads as a fake sticker, not terrain).
+    // Hill cap for tall islands (a darker green rise, part of the island).
     if (isl.h>40){
       const hill = shrink(0.38);
       ctx.fillStyle = hazeColor([58, 128, 64], dist);
       ctx.beginPath(); ctx.moveTo(hill[0].x, hill[0].y-6);
       for (let i=1;i<hill.length;i++) ctx.lineTo(hill[i].x, hill[i].y-6);
       ctx.closePath(); ctx.fill();
-      // Dense jungle patch on the shaded (west) side of the hill.
-      ctx.fillStyle = hazeColor([30, 78, 40], dist);
-      ctx.beginPath();
-      ctx.ellipse(cx - isl.rx*0.10, cy - 10, isl.rx*0.08, isl.h*0.09, 0.3, 0, 6.283);
-      ctx.fill();
     }
     // Island name (only when it fits on screen).
     if (isl.name){
