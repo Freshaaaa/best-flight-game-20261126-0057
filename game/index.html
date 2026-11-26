@@ -513,14 +513,18 @@ function drawSeaAndIslands(){
       for (let i=1;i<hill.length;i++) ctx.lineTo(hill[i].x, hill[i].y-6);
       ctx.closePath(); ctx.fill();
     }
-    // Island name (only when it fits on screen).
+    // Island name (only when it fits on screen). Drawn with a dark
+    // outline so it stays readable over runway, sea or mountain, and
+    // lifted above the island centre so it never sits on the runway.
     if (isl.name){
       const c = project(isl.x, isl.h, isl.z);
       if (c && c.d>250 && c.d<6000 && c.x>60 && c.x<W-60 && c.y>40 && c.y<H-40){
-        ctx.fillStyle='rgba(255,255,255,0.95)';
         ctx.font='bold 13px ui-monospace, monospace';
         ctx.textAlign='center';
-        ctx.fillText(isl.name, c.x, c.y);
+        ctx.fillStyle='rgba(8,20,36,0.85)';
+        ctx.fillText(isl.name, c.x+1, c.y-19);
+        ctx.fillStyle='rgba(255,255,255,0.95)';
+        ctx.fillText(isl.name, c.x, c.y-20);
         ctx.textAlign='left';
       }
     }
@@ -870,10 +874,18 @@ function drawCockpit(){
     ctx.fillStyle='#9fc3e0'; ctx.font='11px ui-monospace, monospace';
     ctx.textAlign='center'; ctx.fillText('SCORE '+S.score, 0, 28); ctx.textAlign='left';
   });
-  // yoke
+  // yoke (control wheel): a full ring with hub and spokes, so it reads
+  // as a finished instrument instead of an empty arc.
+  const yx = 1050, yy = H-95, yr = 42;
+  ctx.strokeStyle='#4a5a6c'; ctx.lineWidth=9;
+  ctx.beginPath(); ctx.arc(yx, yy, yr, 0, 6.283); ctx.stroke();
+  ctx.strokeStyle='#2a3542'; ctx.lineWidth=5;
+  ctx.beginPath(); ctx.moveTo(yx-yr*0.7, yy-yr*0.7); ctx.lineTo(yx+yr*0.7, yy+yr*0.7); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(yx+yr*0.7, yy-yr*0.7); ctx.lineTo(yx-yr*0.7, yy+yr*0.7); ctx.stroke();
+  ctx.fillStyle='#5a6b7d'; ctx.beginPath(); ctx.arc(yx, yy, 11, 0, 6.283); ctx.fill();
+  ctx.fillStyle='#c8d4e0'; ctx.beginPath(); ctx.arc(yx, yy, 5, 0, 6.283); ctx.fill();
   ctx.strokeStyle='#3a4756'; ctx.lineWidth=10;
-  ctx.beginPath(); ctx.arc(1050, H-58, 46, Math.PI, 0); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(1050, H-58); ctx.lineTo(1050, H-8); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(yx, yy+yr); ctx.lineTo(yx, H-8); ctx.stroke();
   ctx.fillStyle='#c8d4e0'; ctx.font='bold 12px ui-monospace, monospace';
   ctx.fillText('NUSA-1 · ARCHIPELAGO RUN', 1000, H-160);
   // compass strip along the top of the panel
@@ -1011,11 +1023,14 @@ function drawHUD(){
   ctx.beginPath(); ctx.arc(cx,cy,14,0,6.283); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(cx-22,cy); ctx.lineTo(cx-8,cy); ctx.moveTo(cx+8,cy); ctx.lineTo(cx+22,cy);
   ctx.moveTo(cx,cy-22); ctx.lineTo(cx,cy-8); ctx.moveTo(cx,cy+8); ctx.lineTo(cx,cy+22); ctx.stroke();
-  // messages
+  // messages (opaque box: the old 0.72 alpha let rings and mountains
+  // show through and fight with the text).
   if (S.msgT>0){
-    ctx.fillStyle='rgba(8,20,36,0.72)';
-    const w = ctx.measureText(S.msg).width + 36;
+    ctx.fillStyle='rgba(8,20,36,0.94)';
+    const w = ctx.measureText(S.msg).width + 48;
     ctx.fillRect(W/2-w/2, 128, w, 40);
+    ctx.strokeStyle='rgba(255,209,102,0.5)'; ctx.lineWidth=1;
+    ctx.strokeRect(W/2-w/2, 128, w, 40);
     ctx.fillStyle='#ffd166'; ctx.font='bold 18px ui-monospace, monospace';
     ctx.textAlign='center'; ctx.fillText(S.msg, W/2, 155); ctx.textAlign='left';
   }
