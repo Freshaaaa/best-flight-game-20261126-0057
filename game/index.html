@@ -397,6 +397,7 @@ function signTexture(txt){
 }
 const texBintang=signTexture('PULAU BINTANG');
 const texKarang=signTexture('PULAU KARANG');
+const texOps=signTexture('OPS');
 const texNusa=canvasTexture(512,96,(g)=>{
   g.fillStyle='#c81e2b';g.font='bold 64px Arial,sans-serif';
   g.textAlign='center';g.textBaseline='middle';g.fillText('NUSA-1',256,50);
@@ -844,8 +845,12 @@ function buildAirport(){
   function windsock(cx,cz){
     const gy=groundY(cx,cz);
     meshCylinder(m,cx,gy+4.5,cz,0.25,0.35,9,0.7,0.7,0.72,6);
-    meshBox(m,cx+2,gy+9,cz,4.5,1.1,1.1,1.0,0.55,0.15);
-    meshSphere(m,cx+4.4,gy+9,cz,0.7,0.7,0.7,1.0,0.55,0.15,6);
+    // striped sock: orange/white/orange/white, tapering toward the tip
+    meshBox(m,cx+1.2,gy+9,cz,1.2,1.1,1.1,1.0,0.55,0.15);
+    meshBox(m,cx+2.4,gy+9,cz,1.2,0.85,0.85,0.95,0.95,0.95);
+    meshBox(m,cx+3.6,gy+9,cz,1.2,0.6,0.6,1.0,0.55,0.15);
+    meshBox(m,cx+4.8,gy+9,cz,1.2,0.4,0.4,0.95,0.95,0.95);
+    meshSphere(m,cx,gy+9.5,cz,0.3,0.3,0.3,1.0,0.2,0.2,6); // red top light
   }
   function terminal(cx,cz,w,h,d,signTex){
     const gy=groundY(cx,cz);
@@ -878,9 +883,15 @@ function buildAirport(){
     const ax0=cx-w*0.28,ax1=cx+w*0.28,ay0=gy+h*0.50,ay1=gy+h*0.85,az=cz+d/2+0.1;
     addSign([ax0,ay0,az],[ax1,ay0,az],[ax1,ay1,az],[ax0,ay1,az],[0,0,1],signTex);
     // jet bridge from the terminal's west wall toward the apron
+    meshCylinder(m,cx-w/2,gy+5,cz+8,2.5,2.5,3.5,0.72,0.72,0.74,8); // rotunda
     meshBox(m,cx-w/2-5,gy+5,cz+8,10,3,3,0.72,0.72,0.74);
     meshBox(m,cx-w/2-10.5,gy+4.5,cz+8,2.5,4,3.5,0.55,0.58,0.62);
     meshBox(m,cx-w/2-5,gy+1.5,cz+8,0.5,3,0.5,0.4,0.4,0.42);
+    // glass band along the bridge's apron side + wheels under the cab
+    meshFlatQuad(wm,[cx-w/2-9,gy+4.5,cz+9.6],[cx-w/2-1,gy+4.5,cz+9.6],[cx-w/2-1,gy+6,cz+9.6],[cx-w/2-9,gy+6,cz+9.6],[0,0,1],1,1,1,[[0,0],[1,0],[1,1],[0,1]],winTex);
+    meshBox(m,cx-w/2-10.5,gy+1.5,cz+8,0.4,2,0.4,0.4,0.4,0.42); // cab support leg
+    meshSphere(m,cx-w/2-10.5,gy+0.5,cz+6.8,0.6,0.6,0.6,0.12,0.12,0.14,6); // wheels
+    meshSphere(m,cx-w/2-10.5,gy+0.5,cz+9.2,0.6,0.6,0.6,0.12,0.12,0.14,6);
   }
   // floodlight pole (apron lighting): thin mast + crossbar + 3 lamps
   function floodlight(cx,cz){
@@ -897,9 +908,17 @@ function buildAirport(){
   meshFlatQuad(m,[38,2.65,9080],[50,2.65,9080],[50,2.65,9082],[38,2.65,9082],[0,1,0],0.95,0.95,0.9,null,null);
   meshFlatQuad(m,[38,2.65,9136],[50,2.65,9136],[50,2.65,9138],[38,2.65,9138],[0,1,0],0.95,0.95,0.9,null,null);
   floodlight(30,9070);floodlight(95,9170);
-  // ops building (white, blue roof) east of the terminal
-  meshBox(m,112,groundY(112,9170)+3,9170,12,6,10,0.90,0.90,0.88);
-  meshBox(m,112,groundY(112,9170)+6.5,9170,13,1,11,0.25,0.45,0.75);
+  // ops building (white, blue gable roof) east of the terminal
+  const ogy=groundY(112,9170);
+  meshBox(m,112,ogy+3,9170,12,6,10,0.90,0.90,0.88);
+  // blue gable roof (ridge along x)
+  meshFlatQuad(m,[106,ogy+8,9170],[118,ogy+8,9170],[118,ogy+6.2,9175.5],[106,ogy+6.2,9175.5],[0,0.4,1],0.25,0.45,0.75,null);
+  meshFlatQuad(m,[118,ogy+8,9170],[106,ogy+8,9170],[106,ogy+6.2,9164.5],[118,ogy+6.2,9164.5],[0,0.4,-1],0.25,0.45,0.75,null);
+  // lit windows on the apron-facing wall + door on the terminal side
+  meshFlatQuad(wm,[107,ogy+1,9175.1],[117,ogy+1,9175.1],[117,ogy+3.5,9175.1],[107,ogy+3.5,9175.1],[0,0,1],1,1,1,[[0,0],[1,0],[1,1],[0,1]],winTex);
+  meshFlatQuad(m,[105.9,ogy,9168],[105.9,ogy,9172],[105.9,ogy+3,9172],[105.9,ogy+3,9168],[-1,0,0],0.25,0.28,0.32,null);
+  // OPS sign above the windows
+  addSign([109,ogy+4,9175.1],[115,ogy+4,9175.1],[115,ogy+5.5,9175.1],[109,ogy+5.5,9175.1],[0,0,1],texOps);
   hangar(-88,9120);
   windsock(55,8850);
   // Pulau Karang (Runway 09) — mid-field, so it shows during the takeoff roll
