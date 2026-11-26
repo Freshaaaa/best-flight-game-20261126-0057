@@ -622,12 +622,13 @@ function buildAirport(){
   meshFlatQuad(m,[38,2.65,9136],[50,2.65,9136],[50,2.65,9138],[38,2.65,9138],[0,1,0],0.95,0.95,0.9,null,null);
   hangar(-88,9120);
   windsock(55,8850);
-  // Pulau Karang (Runway 09) — smaller terminal
-  tower(75,-80,30);
-  terminal(72,-100,30,10,20,texKarang);
-  meshBox(m,43.5,2.2,-100,21,0.8,60,0.55,0.55,0.56); // apron
-  meshBox(m,42,2.2,-145,24,0.8,34,0.42,0.42,0.44); // taxiway 09
-  hangar(-88,-140);
+  // Pulau Karang (Runway 09) — mid-field, so it shows during the takeoff roll
+  tower(68,60,30);
+  terminal(80,120,30,10,20,texKarang);
+  meshBox(m,43.5,2.2,120,21,0.8,60,0.55,0.55,0.56); // apron
+  meshFlatQuad(m,[38,2.65,105],[50,2.65,105],[50,2.65,107],[38,2.65,107],[0,1,0],0.95,0.95,0.9,null,null);
+  meshFlatQuad(m,[38,2.65,135],[50,2.65,135],[50,2.65,137],[38,2.65,137],[0,1,0],0.95,0.95,0.9,null,null);
+  hangar(-88,120);
   windsock(55,250);
   return meshToGL(m);
 }
@@ -1011,10 +1012,12 @@ function render(){
   const park1=matMul(matTranslate(-58,groundY(-58,9150)+2,9150),matMul(matRotY(0.6),matScale(0.9,0.9,0.9)));
   drawMesh(planeGL,park1,{spec:0.35});
   drawMesh(propGL,matMul(park1,matMul(matTranslate(0,0.4,7.15),matRotZ(0.5))),{});
-  const park2=matMul(matTranslate(58,groundY(58,-180)+2,-180),matMul(matRotY(-2.4),matScale(0.9,0.9,0.9)));
+  const park2=matMul(matTranslate(44,groundY(44,105)+2,105),matMul(matRotY(1.4),matScale(0.9,0.9,0.9)));
   drawMesh(planeGL,park2,{spec:0.35});
   drawMesh(propGL,matMul(park2,matMul(matTranslate(0,0.4,7.15),matRotZ(2.1))),{});
-  // two more parked on the Bintang apron
+  const park5=matMul(matTranslate(44,groundY(44,135)+2,135),matMul(matRotY(-1.4),matScale(0.9,0.9,0.9)));
+  drawMesh(planeGL,park5,{spec:0.35});
+  drawMesh(propGL,matMul(park5,matMul(matTranslate(0,0.4,7.15),matRotZ(0.5))),{});  // two more parked on the Bintang apron
   const park3=matMul(matTranslate(44,groundY(44,9090)+2,9090),matMul(matRotY(1.4),matScale(0.9,0.9,0.9)));
   drawMesh(planeGL,park3,{spec:0.35});
   drawMesh(propGL,matMul(park3,matMul(matTranslate(0,0.4,7.15),matRotZ(0.5))),{});
@@ -1323,7 +1326,7 @@ addEventListener('mousemove',e=>{mouseX=e.clientX/innerWidth;mouseActive=perform
 
 // ---------- scene presets ----------
 const scene=qs.get('scene');
-if(scene==='takeoff'){S.started=true;S.throttle=0.55;S.speed=28;}
+if(scene==='takeoff'){S.started=true;S.mode='flying';S.x=0;S.y=100;S.z=-500;S.heading=0;S.speed=25;S.throttle=0.3;S.pitch=-0.02;}
 else if(scene==='ring'){S.started=true;S.mode='flying';S.x=380;S.y=230;S.z=2700;S.heading=0.2;S.pitch=-0.02;S.speed=70;S.throttle=0.7;S.nextRing=2;S.rings=2;S.score=200;}
 else if(scene==='landing'){S.started=true;S.mode='flying';S.x=0;S.y=55;S.z=8530;S.speed=40;S.throttle=0.3;S.pitch=-0.06;S.nextRing=8;}
 else if(scene==='cockpit'){S.started=true;S.view='cockpit';S.throttle=0.6;S.speed=30;}
