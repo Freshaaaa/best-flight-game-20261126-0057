@@ -443,20 +443,10 @@ function drawSeaAndIslands(){
       const py = cy + Math.sin(a)*isl.rz*0.32*rr*0.3;
       ctx.beginPath(); ctx.arc(px, py, 2.2, 0, 6.283); ctx.fill();
     }
-    // Palm clusters on the beach fringe (only when close enough to see).
-    if (centre && centre.d < 3500){
-      ctx.strokeStyle = hazeColor([90, 70, 40], dist);
-      ctx.lineWidth = 1.6;
-      for (let i=0;i<4;i++){
-        const a = (i*1.7 + isl.x*0.01) % 6.283;
-        const px = cx + Math.cos(a)*isl.rx*0.42*0.5;
-        const py = cy + Math.sin(a)*isl.rz*0.42*0.3;
-        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px+2, py-9); ctx.stroke();
-        ctx.fillStyle = hazeColor([46, 130, 62], dist);
-        ctx.beginPath(); ctx.ellipse(px+2, py-10, 7, 3.4, -0.4, 0, 6.283); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(px+2, py-10, 7, 3.4, 0.5, 0, 6.283); ctx.fill();
-      }
-    }
+    // (Palms removed: island-fringe palms were drawn at screen-space
+    // offsets that did not sit on the island's 3D surface, so they read
+    // as trees floating in the air. Trees now live beside the runways,
+    // planted on the ground in drawRunway.)
     // Hill cap for tall islands (a darker green rise, part of the island).
     if (isl.h>40){
       const hill = shrink(0.38);
@@ -520,6 +510,77 @@ function drawRunway(x, z0, headingDeg, label){
   if (lp && lp.d<2500 && lp.x>30 && lp.x<W-30){
     ctx.fillStyle='#fff'; ctx.font='bold 15px ui-monospace, monospace';
     ctx.textAlign='center'; ctx.fillText(label, lp.x, lp.y-8); ctx.textAlign='left';
+  }
+  // --- runway edge lines: solid white lines along both edges ---
+  ctx.strokeStyle='rgba(245,245,245,0.9)';
+  for (const side of [-1, 1]){
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let started = false;
+    for (let s=0; s<=len; s+=SEG){
+      const ex = x + dx*s + px*side*(wid/2 - 1.5);
+      const ez = z0 + dz*s + pz*side*(wid/2 - 1.5);
+      const p = project(ex, RWY_Y, ez);
+      if (!p) continue;
+      if (!started){ ctx.moveTo(p.x, p.y); started = true; }
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+  }
+  // --- fence: posts + two rails along both sides, just outside the runway ---
+  for (const side of [-1, 1]){
+    const fx = wid/2 + 8;
+    // rails (two horizontal lines, at 1.2 m and 2.2 m height)
+    for (const rh of [1.2, 2.2]){
+      ctx.strokeStyle='rgba(220,220,220,0.75)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      let started = false;
+      for (let s=0; s<=len; s+=SEG){
+        const ex = x + dx*s + px*side*fx;
+        const ez = z0 + dz*s + pz*side*fx;
+        const p = project(ex, RWY_Y + rh, ez);
+        if (!p) continue;
+        if (!started){ ctx.moveTo(p.x, p.y); started = true; }
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+    }
+    // posts every 40 m
+    ctx.strokeStyle='rgba(200,200,200,0.9)';
+    ctx.lineWidth = 2;
+    for (let s=0; s<=len; s+=40){
+      const ex = x + dx*s + px*side*fx;
+      const ez = z0 + dz*s + pz*side*fx;
+      const base = project(ex, RWY_Y, ez);
+      const top = project(ex, RWY_Y + 2.4, ez);
+      if (!base || !top) continue;
+      ctx.beginPath(); ctx.moveTo(base.x, base.y); ctx.lineTo(top.x, top.y); ctx.stroke();
+    }
+  }
+  // --- palm trees planted on the ground beside the runway (outside the fence) ---
+  for (const side of [-1, 1]){
+    const tx = wid/2 + 22;
+    for (let s=30; s<=len; s+=60){
+      const ex = x + dx*s + px*side*tx;
+      const ez = z0 + dz*s + pz*side*tx;
+      const base = project(ex, RWY_Y, ez);
+      const top = project(ex, RWY_Y + 7, ez);
+      if (!base || !top) continue;
+      const hgt = base.y - top.y;
+      if (hgt < 3) continue;
+      const trunkW = Math.max(1.2, hgt * 0.06);
+      ctx.strokeStyle = '#6b4e2e';
+      ctx.lineWidth = trunkW;
+      ctx.beginPath(); ctx.moveTo(base.x, base.y); ctx.lineTo(top.x, top.y); ctx.stroke();
+      // fronds: a small green crown at the top of the trunk
+      const cr = hgt * 0.55;
+      ctx.fillStyle = '#2f8240';
+      ctx.beginPath(); ctx.ellipse(top.x, top.y, cr, cr*0.32, -0.35, 0, 6.283); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(top.x, top.y, cr, cr*0.32, 0.35, 0, 6.283); ctx.fill();
+      ctx.fillStyle = '#3a9a4e';
+      ctx.beginPath(); ctx.ellipse(top.x, top.y - cr*0.15, cr*0.7, cr*0.28, 0, 0, 6.283); ctx.fill();
+    }
   }
 }
 function drawRings(){
