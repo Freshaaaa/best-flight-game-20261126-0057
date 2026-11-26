@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Archipelago Run — Island Hopper</title>
+<style>
+  html,body{margin:0;padding:0;background:#0b1e33;height:100%;overflow:hidden;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0b1e33;}
+  canvas{display:block;background:#87b5d6;box-shadow:0 0 0 1px #123;}
+  #help{position:fixed;left:12px;bottom:10px;color:#cfe6ff;font-size:12px;opacity:.85;
+    text-shadow:0 1px 2px #000;pointer-events:none;user-select:none;}
+  #help b{color:#ffd166;}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" width="1280" height="720"></canvas></div>
+<div id="help">Fly: <b>↑/↓</b> pitch &nbsp; <b>←/→</b> bank &nbsp; <b>Shift</b> throttle up &nbsp; <b>Ctrl</b> throttle down &nbsp; <b>Mouse</b> steer &nbsp; <b>C</b> cockpit view &nbsp; <b>R</b> restart &nbsp; <b>P</b> pause</div>
+<script>
+"use strict";
+/* =====================================================================
+   ARCHIPELAGO RUN — Island Hopper
+   A chase-view / cockpit-view flight game over a tropical archipelago.
+   Fly the little prop plane "Nusa-1" from Runway 09 on Pulau Karang,
+   through 8 golden rings, and land on Runway 27 on Pulau Bintang.
+   Pure Canvas 2D, no network, no external assets. Deterministic world
+   (seeded), so every run and every screenshot is reproducible.
+   ===================================================================== */
+
+// ---------- seeded random (deterministic world) ----------
+function mulberry32(seed){let a=seed>>>0;return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rng = mulberry32(20261126);
+
+// ---------- constants ----------
+const W = 1280, H = 720;
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// World: x = east (m), z = north (m, forward = +z), y = altitude (m).
+// The route runs from z=0 (Pulau Karang) to z=9000 (Pulau Bintang).
+const ROUTE_LEN = 9000;
+const RING_Z = [900, 1900, 2900, 3900, 4900, 5900, 6900, 7900];
+const RINGS = RING_Z.map((z,i)=>({
+  z, x: [260,-320,420,-180,80,-420,300,-120][i],
+  y: [260,340,300,420,360,300,380,320][i],
+  r: 90, passed:false
+}));
+// Islands: {x, z, rx, rz, h} — drawn as green blobs on the sea.
+const ISLANDS = [
+  {x:0,    z:0,    rx:900, rz:700, h:26,  name:"PULAU KARANG"},   // start
+  {x:420,  z:1500, rx:520, rz:420, h:60},
+  {x:-520, z:2600, rx:640, rz:480, h:120},
+  {x:180,  z:3900, rx:430, rz:380, h:40},
+  {x:-280, z:5200, rx:560, rz:440, h:90},
+  {x:520,  z:6400, rx:480, rz:400, h:150},
+  {x:-80,  z:7700, rx:560, rz:460, h:70},
+  {x:0,    z:9000, rx:980, rz:760, h:30,  name:"PULAU BINTANG"},  // destination
+];
+// Distant volcanic peaks on the horizon (parallax silhouettes).
+const PEAKS = [
+  {x:-2600,z:11500,h:900},{x:-900,z:12500,h:1200},{x:700,z:12000,h:1050},
+  {x:2300,z:11500,h:800},{x:3600,z:12800,h:950}
+];
+// Clouds: {x, y, z, s}
+const CLOUDS = [];
+for (let i=0;i<26;i++){
+  CLOUDS.push({x:(rng()-0.5)*9000, y:520+rng()*420, z:rng()*11000, s:90+rng()*190});
+}
+// Birds for life.
+const BIRDS = [];
+for (let i=0;i<9;i++) BIRDS.push({x:(rng()-0.5)*3000, y:200+rng()*260, z:600+rng()*7000, ph:rng()*6.28});
+
+// ---------- game state ----------
+const S = {
+  // plane
+  x:0, y:2, z:0,            // position (m); y = height above sea
+  heading:0,                // radians, 0 = north (+z)
+  pitch:0, roll:0,          // radians
+  speed:0,                  // m/s (knots shown = m/s * 1.944)
+  throttle:0.35,
+  // flight
+  mode:'takeoff',           // takeoff | flying | landed | crashed | done
+  rings:0, score:0,
+  time:0, started:false,
+  msg:'', msgT:0,
+  view:'chase',             // chase | cockpit
+  paused:false,
+  camShake:0,
+  prop:0,
+  best:0,
+  airTime:0,                // seconds since takeoff (collision grace)
+};
+const GROUND_Y = 2;         // runway height
+const TAKEOFF_SPEED = 32;   // m/s needed to lift off
+const MAX_SPEED = 95;
+const MIN_SPEED = 0;
+
+// ---------- input ----------
+const keys = {};
+let mouseX = null, mouseActive = false;
+window.addEventListener('keydown', e=>{
+  keys[e.key.toLowerCase()] = true;
+  if (e.key===' '){ e.preventDefault(); }
+  if (e.key.toLowerCase()==='c'){ S.view = S.view==='chase' ? 'cockpit' : 'chase'; }
+  if (e.key.toLowerCase()==='r'){ resetGame(); }
+  if (e.key.toLowerCase()==='p'){ S.paused = !S.paused; }
+});
+window.addEventListener('keyup', e=>{ keys[e.key.toLowerCase()] = false; });
+canvas.addEventListener('mousemove', e=>{
+  const r = canvas.getBoundingClientRect();
+  mouseX = (e.clientX - r.left) / r.width * W;
+  mouseActive = true;
+});
+canvas.addEventListener('mouseleave', ()=>{ mouseActive = false; });
+canvas.addEventListener('click', ()=>{ if(!S.started) startGame(); });
+
+function startGame(){ S.started = true; S.mode='takeoff'; showMsg('THROTTLE UP — SHIFT, THEN PULL UP', 4); }
+function showMsg(t, dur){ S.msg=t; S.msgT=dur; }
+function resetGame(){
+  S.x=0; S.y=GROUND_Y; S.z=0; S.heading=0; S.pitch=0; S.roll=0;
+  S.speed=0; S.throttle=0.35; S.mode='takeoff'; S.rings=0; S.score=0;
+  S.time=0; S.started=false; S.msg=''; S.msgT=0; S.paused=false;
+  S.airTime=0;
+  RINGS.forEach(r=>r.passed=false);
+}
+
+// ---------- helpers ----------
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+// Project a world point to screen (chase camera behind the plane).
+// Camera sits behind + above the plane, looking along heading.
+function project(px, py, pz){
+  // relative to plane
+  const dx = px - S.x, dy = py - S.y, dz = pz - S.z;
+  // rotate by -heading so forward = +z
+  const ch = Math.cos(S.heading), sh = Math.sin(S.heading);
+  const rx = dx*ch - dz*sh;
+  const rz = dx*sh + dz*ch;
+  // camera offset: behind plane, above it
+  const camBack = 26, camUp = 7;
+  const cz = rz + camBack;                 // distance ahead of camera
+  if (cz < 2) return null;
+  const f = 620;                           // focal length
+  // horizon drops when the nose rises (looking up)
+  const horizon = H*0.46 + S.pitch*420;
+  const sx = W/2 + (rx - S.roll*8) * f / cz;
+  // vertical: a point (camUp - dy) below the camera appears that far
+  // below the horizon, scaled by perspective.
+  const sy = horizon + (camUp - dy) * f / cz;
+  return {x:sx, y:sy, d:cz, scale:f/cz};
+}
+// Ground height at (x,z): 0 = sea, island height on land.
+function groundHeight(x, z){
+  let h = 0;
+  for (const isl of ISLANDS){
+    const dx=(x-isl.x)/isl.rx, dz=(z-isl.z)/isl.rz;
+    const d2 = dx*dx+dz*dz;
+    if (d2 < 1){
+      const t = 1-d2;
+      h = Math.max(h, isl.h * t*t);
+    }
+  }
+  return h;
+}
+// The surface the plane can hit: runways are flat at GROUND_Y, the
+// island hills rise above it elsewhere, the sea is at 0.
+function surfaceHeight(x, z){
+  if (Math.abs(x) < 20 && ((z>=-10 && z<=430) || (z>=8990 && z<=9430))) return GROUND_Y;
+  return groundHeight(x, z);
+}
+
+// ---------- update ----------
+function update(dt){
+  if (S.paused || !S.started) return;
+  S.time += dt;
+  S.prop += dt * (4 + S.throttle*30);
+  if (S.msgT>0) S.msgT -= dt;
+
+  // --- controls ---
+  const pitchIn = (keys['arrowup']||keys['w']?1:0) - (keys['arrowdown']||keys['s']?1:0);
+  const rollIn  = (keys['arrowright']||keys['d']?1:0) - (keys['arrowleft']||keys['a']?1:0);
+  if (keys['shift']) S.throttle = clamp(S.throttle + dt*0.5, 0, 1);
+  if (keys['control']) S.throttle = clamp(S.throttle - dt*0.5, 0, 1);
+  // mouse steering: bank toward mouse x
+  if (mouseActive && mouseX!==null){
+    const steer = (mouseX - W/2) / (W/2);      // -1..1
+    S.roll = clamp(S.roll + steer*dt*1.4, -0.9, 0.9);
+  }
+  // keyboard roll
+  S.roll = clamp(S.roll + rollIn*dt*1.6, -0.9, 0.9);
+  if (!rollIn && !(mouseActive && mouseX!==null)) S.roll = lerp(S.roll, 0, dt*1.2);
+  // pitch follows input; auto-level gently
+  const targetPitch = pitchIn*0.28;
+  S.pitch = lerp(S.pitch, targetPitch, dt*1.6);
+
+  // --- physics ---
+  const onGround = S.y <= GROUND_Y+0.5;
+  if (S.mode==='takeoff'){
+    S.speed = lerp(S.speed, S.throttle*MAX_SPEED, dt*0.25);
+    if (S.speed > TAKEOFF_SPEED && pitchIn>0){
+      S.mode='flying';
+      S.y = GROUND_Y + 4;    // a hop off the runway so the ground check
+      S.airTime = 0;         // does not fire on the takeoff frame itself
+      showMsg('AIRBORNE — FLY THROUGH THE GOLDEN RINGS', 3.5);
+    }
+    if (onGround && S.mode==='takeoff'){ S.y = GROUND_Y; }
+  } else if (S.mode==='flying' || S.mode==='done'){
+    S.airTime += dt;
+    const accel = (S.throttle*MAX_SPEED - S.speed)*0.22;
+    S.speed = clamp(S.speed + accel*dt, MIN_SPEED, MAX_SPEED);
+    // climb / descend with pitch; speed bleeds in a climb
+    S.y += Math.sin(S.pitch)*S.speed*dt;
+    if (S.pitch>0.05) S.speed = Math.max(S.speed - S.pitch*dt*14, 26);
+    // turn with roll
+    S.heading += -S.roll * (S.speed/60) * dt * 0.55;
+    // gentle sink if too slow
+    if (S.speed < 30) S.y -= (30-S.speed)*dt*0.35;
+  }
+  // forward motion
+  const vx = Math.sin(S.heading)*S.speed, vz = Math.cos(S.heading)*S.speed;
+  S.x += vx*dt; S.z += vz*dt;
+  if (S.mode==='takeoff'){ S.x = clamp(S.x, -60, 60); }  // stay on runway line
+
+  // --- rings ---
+  for (const r of RINGS){
+    if (r.passed) continue;
+    const dx=S.x-r.x, dy=S.y-r.y, dz=S.z-r.z;
+    const d=Math.sqrt(dx*dx+dy*dy+dz*dz);
+    if (d < r.r){
+      r.passed=true; S.rings++; S.score += 100;
+      showMsg('RING '+S.rings+'/8  +100', 2);
+      S.camShake = 0.35;
+    }
+  }
+  // --- terrain collision (after a short grace so takeoff never trips it) ---
+  const gh = surfaceHeight(S.x, S.z);
+  if (S.mode==='flying' && S.airTime > 0.8 && S.y <= gh+1){
+    if (S.z > 8300 && S.z < 9700 && Math.abs(S.x) < 320 && S.speed < 42 && Math.abs(S.pitch) < 0.2){
+      // landing on Pulau Bintang runway
+      S.mode='done'; S.speed=0; S.y=gh;
+      S.score += 500 + S.rings*50;
+      showMsg('LANDED ON PULAU BINTANG — SCORE '+S.score, 6);
+    } else {
+      S.mode='crashed';
+      showMsg('CRASHED — PRESS R TO FLY AGAIN', 6);
+      S.camShake = 1.0;
+    }
+  }
+  if (S.mode==='flying' && S.y < 1){ S.y=1; }
+  // --- bounds ---
+  if (S.z > 10200){ S.z = 10200; S.heading = Math.PI; }
+  if (S.z < -300){ S.z=-300; S.heading=0; }
+  S.x = clamp(S.x, -4200, 4200);
+  if (S.camShake>0) S.camShake -= dt;
+  S.best = Math.max(S.best, S.score);
+}
+
+// ---------- drawing ----------
+function drawSky(){
+  const g = ctx.createLinearGradient(0,0,0,H*0.62);
+  g.addColorStop(0,'#2f6fb2'); g.addColorStop(0.55,'#7fb2dd'); g.addColorStop(1,'#cfe8f5');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H*0.62);
+  // sun
+  const sg = ctx.createRadialGradient(1060,110,8, 1060,110,90);
+  sg.addColorStop(0,'rgba(255,244,190,1)'); sg.addColorStop(0.4,'rgba(255,220,120,0.85)'); sg.addColorStop(1,'rgba(255,220,120,0)');
+  ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(1060,110,90,0,6.283); ctx.fill();
+  ctx.fillStyle='#fff3c4'; ctx.beginPath(); ctx.arc(1060,110,34,0,6.283); ctx.fill();
+}
+function drawClouds(){
+  ctx.fillStyle='rgba(255,255,255,0.92)';
+  for (const c of CLOUDS){
+    const p = project(c.x, c.y, c.z);
+    if (!p) continue;
+    const s = c.s * p.scale * 0.5;
+    if (s<3 || s>420) continue;
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, s, s*0.36, 0, 0, 6.283);
+    ctx.ellipse(p.x+s*0.5, p.y+s*0.08, s*0.7, s*0.3, 0, 0, 6.283);
+    ctx.fill();
+  }
+}
+function drawPeaks(){
+  for (const pk of PEAKS){
+    const p = project(pk.x, 0, pk.z);
+    if (!p) continue;
+    const w = pk.h*2.4*p.scale*0.6, h = pk.h*p.scale*0.6;
+    if (w<4) continue;
+    ctx.fillStyle='#5b7fa6';
+    ctx.beginPath();
+    ctx.moveTo(p.x-w, p.y); ctx.lineTo(p.x-w*0.35, p.y-h);
+    ctx.lineTo(p.x, p.y-h*1.25); ctx.lineTo(p.x+w*0.4, p.y-h*0.8);
+    ctx.lineTo(p.x+w, p.y); ctx.closePath(); ctx.fill();
+    // snow cap
+    ctx.fillStyle='#eef4fa';
+    ctx.beginPath();
+    ctx.moveTo(p.x-w*0.12, p.y-h*0.86); ctx.lineTo(p.x, p.y-h*1.25);
+    ctx.lineTo(p.x+w*0.14, p.y-h*0.84); ctx.lineTo(p.x, p.y-h*0.6);
+    ctx.closePath(); ctx.fill();
+  }
+}
+function drawSeaAndIslands(){
+  // sea
+  const horizon = H*0.46 + S.pitch*420;
+  const g = ctx.createLinearGradient(0,horizon,0,H);
+  g.addColorStop(0,'#3d8fc4'); g.addColorStop(0.5,'#1e6ea8'); g.addColorStop(1,'#14517e');
+  ctx.fillStyle=g; ctx.fillRect(0,horizon,W,H-horizon);
+  // sun glitter on the water
+  ctx.fillStyle='rgba(255,240,180,0.28)';
+  for (let i=0;i<14;i++){
+    const y = horizon + 18 + i*22 + Math.sin(S.time*0.7+i)*3;
+    const w = 60 + (i%3)*40;
+    ctx.fillRect(1010-w/2, y, w, 2.5);
+  }
+  // islands as projected boundary polygons (correct even when the camera
+  // is standing on the island — the polygon covers the lower screen and
+  // shows its far edge where it meets the sea).
+  const sorted = ISLANDS.slice().sort((a,b)=>b.z-a.z);
+  for (const isl of sorted){
+    const N = 28, pts = [];
+    for (let i=0;i<N;i++){
+      const a = i/N * Math.PI*2;
+      const wx = isl.x + Math.cos(a)*isl.rx;
+      const wz = isl.z + Math.sin(a)*isl.rz;
+      const p = project(wx, groundHeight(wx,wz)*0.4, wz);
+      if (p) pts.push(p);
+    }
+    if (pts.length < 3) continue;
+    // beach: the outer polygon
+    ctx.fillStyle='#e8d9a0';
+    ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.closePath(); ctx.fill();
+    // green interior: the same polygon shrunk toward its screen centroid
+    let cx=0, cy=0;
+    for (const p of pts){ cx+=p.x; cy+=p.y; }
+    cx/=pts.length; cy/=pts.length;
+    ctx.fillStyle='#4e9b4e';
+    ctx.beginPath();
+    for (let i=0;i<pts.length;i++){
+      const px = cx + (pts[i].x-cx)*0.8, py = cy + (pts[i].y-cy)*0.8;
+      if (i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.closePath(); ctx.fill();
+    // hill cap for tall islands
+    if (isl.h>40){
+      ctx.fillStyle='#3d8343';
+      ctx.beginPath();
+      for (let i=0;i<pts.length;i++){
+        const px = cx + (pts[i].x-cx)*0.38, py = cy + (pts[i].y-cy)*0.38 - 6;
+        if (i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+      }
+      ctx.closePath(); ctx.fill();
+    }
+    // island name (only when it fits on screen)
+    if (isl.name){
+      const c = project(isl.x, isl.h, isl.z);
+      if (c && c.d>250 && c.d<6000 && c.x>60 && c.x<W-60 && c.y>40 && c.y<H-40){
+        ctx.fillStyle='rgba(255,255,255,0.95)';
+        ctx.font='bold 13px ui-monospace, monospace';
+        ctx.textAlign='center';
+        ctx.fillText(isl.name, c.x, c.y);
+        ctx.textAlign='left';
+      }
+    }
+  }
+}
+function drawRunway(x, z0, headingDeg, label){
+  // A runway strip starting at its threshold (x, z0) and running north.
+  // Drawn as short segments so the part behind the camera is skipped
+  // instead of dropping the whole strip.
+  const len=420, wid=34;
+  const hd = headingDeg*Math.PI/180;
+  const dx=Math.sin(hd), dz=Math.cos(hd);
+  const px=Math.cos(hd), pz=-Math.sin(hd);
+  const SEG = 30;   // segment length (m)
+  const RWY_Y = GROUND_Y + 0.4;   // runways are flat, not island-peak high
+  ctx.fillStyle='#3a3f46';
+  for (let s=0; s<len; s+=SEG){
+    const zA=z0+dz*s, zB=z0+dz*Math.min(s+SEG,len);
+    const xA=x+dx*s, xB=x+dx*Math.min(s+SEG,len);
+    const corners = [
+      [xA-px*wid/2, zA-pz*wid/2], [xB-px*wid/2, zB-pz*wid/2],
+      [xB+px*wid/2, zB+pz*wid/2], [xA+px*wid/2, zA+pz*wid/2],
+    ];
+    const pts = corners.map(c=>project(c[0], RWY_Y, c[1]));
+    if (pts.some(p=>!p)) continue;
+    ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); ctx.lineTo(pts[1].x,pts[1].y);
+    ctx.lineTo(pts[2].x,pts[2].y); ctx.lineTo(pts[3].x,pts[3].y);
+    ctx.closePath(); ctx.fill();
+  }
+  // centreline dashes (only the visible ones)
+  ctx.fillStyle='#f5f5f5';
+  for (let t=30; t<len; t+=60){
+    const cx=x+dx*t, cz2=z0+dz*t;
+    const a=project(cx-px*1.2, RWY_Y, cz2-pz*1.2);
+    const b=project(cx+px*1.2, RWY_Y, cz2+pz*1.2);
+    const c2=project(cx+dx*14-px*1.2, RWY_Y, cz2+dz*14-pz*1.2);
+    const d2=project(cx+dx*14+px*1.2, RWY_Y, cz2+dz*14+pz*1.2);
+    if (a&&b&&c2&&d2){
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(c2.x,c2.y);
+      ctx.lineTo(d2.x,d2.y); ctx.lineTo(b.x,b.y); ctx.closePath(); ctx.fill();
+    }
+  }
+  // threshold label
+  const lp = project(x, RWY_Y, z0+10);
+  if (lp && lp.d<2500 && lp.x>30 && lp.x<W-30){
+    ctx.fillStyle='#fff'; ctx.font='bold 15px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText(label, lp.x, lp.y-8); ctx.textAlign='left';
+  }
+}
+function drawRings(){
+  for (const r of RINGS){
+    if (r.passed) continue;
+    const p = project(r.x, r.y, r.z);
+    if (!p) continue;
+    const rad = r.r*p.scale;
+    if (rad<2 || rad>900) continue;
+    // glow
+    ctx.strokeStyle='rgba(255,200,60,0.35)'; ctx.lineWidth=Math.max(2,rad*0.16);
+    ctx.beginPath(); ctx.ellipse(p.x,p.y,rad,rad*0.92,0,0,6.283); ctx.stroke();
+    // ring
+    ctx.strokeStyle='#ffc73c'; ctx.lineWidth=Math.max(2,rad*0.07);
+    ctx.beginPath(); ctx.ellipse(p.x,p.y,rad,rad*0.92,0,0,6.283); ctx.stroke();
+    ctx.strokeStyle='#fff2c0'; ctx.lineWidth=Math.max(1,rad*0.02);
+    ctx.beginPath(); ctx.ellipse(p.x,p.y,rad,rad*0.92,0,0,6.283); ctx.stroke();
+    // number tag
+    if (rad>26){
+      ctx.fillStyle='#7a5200'; ctx.font='bold '+Math.max(11,rad*0.22)+'px ui-monospace, monospace';
+      ctx.textAlign='center'; ctx.fillText(String(RINGS.indexOf(r)+1), p.x, p.y+rad*0.08);
+      ctx.textAlign='left';
+    }
+  }
+}
+function drawBirds(){
+  ctx.strokeStyle='rgba(30,40,60,0.85)'; ctx.lineWidth=2;
+  for (const b of BIRDS){
+    const p = project(b.x + Math.sin(S.time*0.6+b.ph)*30, b.y, b.z);
+    if (!p || p.scale<0.05 || p.scale>0.6) continue;
+    const s = 10*p.scale*3;
+    const flap = Math.sin(S.time*6+b.ph)*s*0.4;
+    ctx.beginPath();
+    ctx.moveTo(p.x-s, p.y-flap); ctx.quadraticCurveTo(p.x, p.y+flap*0.4, p.x+s, p.y-flap);
+    ctx.stroke();
+  }
+}
+function drawPlane(){
+  // Chase view: the Nusa-1 prop plane from behind, centre of screen.
+  const cx = W/2, cy = H*0.58;
+  const bank = S.roll;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-bank*0.9);
+  const sh = S.camShake>0 ? (Math.random()-0.5)*S.camShake*10 : 0;
+  ctx.translate(sh, sh*0.5);
+  // shadow on the ground far below (only when low)
+  // fuselage
+  ctx.fillStyle='#e8e4da';
+  ctx.beginPath(); ctx.ellipse(0, 0, 16, 66, 0, 0, 6.283); ctx.fill();
+  ctx.fillStyle='#d33f2e';
+  ctx.beginPath(); ctx.ellipse(0, -18, 15, 30, 0, 0, 6.283); ctx.fill();
+  // canopy
+  ctx.fillStyle='#9fd8ef';
+  ctx.beginPath(); ctx.ellipse(0, -38, 10, 20, 0, 0, 6.283); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.75)';
+  ctx.beginPath(); ctx.ellipse(-3, -44, 4, 8, -0.4, 0, 6.283); ctx.fill();
+  // wings
+  ctx.fillStyle='#e8e4da';
+  ctx.beginPath(); ctx.moveTo(-14,-6); ctx.lineTo(-118,26); ctx.lineTo(-118,40); ctx.lineTo(-12,16); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(14,-6); ctx.lineTo(118,26); ctx.lineTo(118,40); ctx.lineTo(12,16); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#d33f2e';
+  ctx.beginPath(); ctx.moveTo(-14,-6); ctx.lineTo(-118,26); ctx.lineTo(-118,32); ctx.lineTo(-12,4); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(14,-6); ctx.lineTo(118,26); ctx.lineTo(118,32); ctx.lineTo(12,4); ctx.closePath(); ctx.fill();
+  // wingtip lights
+  ctx.fillStyle='#ff3b30'; ctx.beginPath(); ctx.arc(-118,33,4,0,6.283); ctx.fill();
+  ctx.fillStyle='#34d17b'; ctx.beginPath(); ctx.arc(118,33,4,0,6.283); ctx.fill();
+  // tail
+  ctx.fillStyle='#e8e4da';
+  ctx.beginPath(); ctx.moveTo(-8,52); ctx.lineTo(-52,72); ctx.lineTo(-52,80); ctx.lineTo(-6,62); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(8,52); ctx.lineTo(52,72); ctx.lineTo(52,80); ctx.lineTo(6,62); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#d33f2e';
+  ctx.beginPath(); ctx.moveTo(-10,58); ctx.lineTo(10,58); ctx.lineTo(6,78); ctx.lineTo(-6,78); ctx.closePath(); ctx.fill();
+  // propeller (spinning disc)
+  const pa = S.prop;
+  ctx.fillStyle='rgba(40,40,40,0.28)';
+  ctx.beginPath(); ctx.ellipse(0, -64, 34, 7, pa, 0, 6.283); ctx.fill();
+  ctx.fillStyle='#222';
+  ctx.beginPath(); ctx.ellipse(0, -64, 30, 3.2, pa, 0, 6.283); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, -64, 30, 3.2, pa+1.57, 0, 6.283); ctx.fill();
+  ctx.fillStyle='#444'; ctx.beginPath(); ctx.arc(0,-64,5,0,6.283); ctx.fill();
+  // registration
+  ctx.fillStyle='#333'; ctx.font='bold 10px ui-monospace, monospace';
+  ctx.textAlign='center'; ctx.fillText('NUSA-1', 0, 30); ctx.textAlign='left';
+  ctx.restore();
+}
+function drawCockpit(){
+  // Cockpit view: windshield frame + full instrument panel.
+  const horizon = H*0.46 + S.pitch*420;
+  // windshield view is the world already drawn; now frame it.
+  ctx.fillStyle='#1c2733';
+  // top bar + pillars
+  ctx.fillRect(0,0,W,54);
+  ctx.beginPath(); ctx.moveTo(0,54); ctx.lineTo(150,H); ctx.lineTo(210,H); ctx.lineTo(90,54); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(W,54); ctx.lineTo(W-150,H); ctx.lineTo(W-210,H); ctx.lineTo(W-90,54); ctx.closePath(); ctx.fill();
+  // dashboard
+  ctx.fillStyle='#232b34';
+  ctx.fillRect(0,H-190,W,190);
+  ctx.fillStyle='#2e3947'; ctx.fillRect(0,H-190,W,10);
+  // --- instruments (six-pack) ---
+  const cy = H-95;
+  function dial(x, label, drawFn){
+    ctx.save(); ctx.translate(x, cy);
+    ctx.fillStyle='#0e141b'; ctx.beginPath(); ctx.arc(0,0,52,0,6.283); ctx.fill();
+    ctx.strokeStyle='#c8d4e0'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(0,0,52,0,6.283); ctx.stroke();
+    drawFn();
+    ctx.fillStyle='#c8d4e0'; ctx.font='bold 11px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText(label, 0, 68); ctx.textAlign='left';
+    ctx.restore();
+  }
+  // attitude indicator
+  dial(150,'ATTITUDE',()=>{
+    ctx.save(); ctx.rotate(-S.roll); ctx.translate(0, S.pitch*160);
+    ctx.fillStyle='#4a90d9'; ctx.fillRect(-52,-52,104,52);
+    ctx.fillStyle='#8a6b46'; ctx.fillRect(-52,0,104,52);
+    ctx.restore();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(-52,0); ctx.lineTo(52,0); ctx.stroke();
+    ctx.fillStyle='#ffd166'; ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(-8,4); ctx.lineTo(8,4); ctx.closePath(); ctx.fill();
+  });
+  // airspeed
+  dial(290,'AIRSPEED',()=>{
+    const kt = Math.round(S.speed*1.944);
+    ctx.fillStyle='#eaf6ff'; ctx.font='bold 26px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText(String(kt), 0, 8); ctx.textAlign='left';
+    ctx.fillStyle='#9fc3e0'; ctx.font='11px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText('KNOTS', 0, 28); ctx.textAlign='left';
+  });
+  // altimeter
+  dial(430,'ALTITUDE',()=>{
+    const ft = Math.round(S.y*3.281);
+    ctx.fillStyle='#eaf6ff'; ctx.font='bold 24px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText(String(ft), 0, 8); ctx.textAlign='left';
+    ctx.fillStyle='#9fc3e0'; ctx.font='11px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText('FEET', 0, 28); ctx.textAlign='left';
+  });
+  // heading / compass
+  dial(570,'HEADING',()=>{
+    const hd = ((S.heading*57.2958)%360+360)%360;
+    ctx.fillStyle='#eaf6ff'; ctx.font='bold 26px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText(String(Math.round(hd)).padStart(3,'0')+'°', 0, 8); ctx.textAlign='left';
+    ctx.fillStyle='#ffd166'; ctx.font='bold 12px ui-monospace, monospace';
+    ctx.textAlign='center';
+    ctx.fillText(['N','NE','E','SE','S','SW','W','NW'][Math.round(hd/45)%8], 0, 28);
+    ctx.textAlign='left';
+  });
+  // throttle gauge
+  dial(710,'THROTTLE',()=>{
+    ctx.fillStyle='#0e141b'; ctx.fillRect(-34,-30,68,60);
+    ctx.fillStyle='#34d17b'; ctx.fillRect(-34,30-S.throttle*60,68,S.throttle*60);
+    ctx.fillStyle='#eaf6ff'; ctx.font='bold 20px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText(Math.round(S.throttle*100)+'%', 0, 8); ctx.textAlign='left';
+  });
+  // rings / score
+  dial(850,'RINGS',()=>{
+    ctx.fillStyle='#ffd166'; ctx.font='bold 26px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText(S.rings+' / 8', 0, 8); ctx.textAlign='left';
+    ctx.fillStyle='#9fc3e0'; ctx.font='11px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText('SCORE '+S.score, 0, 28); ctx.textAlign='left';
+  });
+  // yoke
+  ctx.strokeStyle='#3a4756'; ctx.lineWidth=10;
+  ctx.beginPath(); ctx.arc(1050, H-58, 46, Math.PI, 0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(1050, H-58); ctx.lineTo(1050, H-8); ctx.stroke();
+  ctx.fillStyle='#c8d4e0'; ctx.font='bold 12px ui-monospace, monospace';
+  ctx.fillText('NUSA-1 · ARCHIPELAGO RUN', 1000, H-160);
+  // compass strip along the top of the panel
+  ctx.fillStyle='#0e141b'; ctx.fillRect(0, 54, W, 0);
+}
+function drawHUD(){
+  // In cockpit view the instrument panel carries the flight data, so the
+  // two corner boxes are hidden there (less clutter over the windshield).
+  const showCorners = S.view !== 'cockpit';
+  const mm = String(Math.floor(S.time/60)).padStart(2,'0'),
+        ss = String(Math.floor(S.time%60)).padStart(2,'0');
+  if (showCorners){
+  // top-left flight data
+  const kt = Math.round(S.speed*1.944);
+  const ft = Math.round(S.y*3.281);
+  const hd = ((S.heading*57.2958)%360+360)%360;
+  ctx.fillStyle='rgba(8,20,36,0.62)'; ctx.fillRect(14,14,300,96);
+  ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=1; ctx.strokeRect(14,14,300,96);
+  ctx.fillStyle='#9fd8ef'; ctx.font='bold 12px ui-monospace, monospace';
+  ctx.fillText('ALTITUDE', 26, 36); ctx.fillText('SPEED', 26, 62); ctx.fillText('HEADING', 26, 88);
+  ctx.fillStyle='#fff'; ctx.font='bold 20px ui-monospace, monospace';
+  ctx.fillText(ft.toLocaleString()+' FT', 130, 38);
+  ctx.fillText(kt+' KT', 130, 64);
+  ctx.fillText(String(Math.round(hd)).padStart(3,'0')+'°', 130, 90);
+  // top-right score
+  ctx.fillStyle='rgba(8,20,36,0.62)'; ctx.fillRect(W-254,14,240,96);
+  ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.strokeRect(W-254,14,240,96);
+  ctx.fillStyle='#ffd166'; ctx.font='bold 12px ui-monospace, monospace';
+  ctx.fillText('SCORE', W-242, 36); ctx.fillText('RINGS', W-242, 62); ctx.fillText('TIME', W-242, 88);
+  ctx.fillStyle='#fff'; ctx.font='bold 20px ui-monospace, monospace';
+  ctx.fillText(String(S.score), W-150, 38);
+  ctx.fillText(S.rings+' / 8', W-150, 64);
+  ctx.fillText(mm+':'+ss, W-150, 90);
+  }
+  // throttle bar (bottom-left)
+  ctx.fillStyle='rgba(8,20,36,0.62)'; ctx.fillRect(14,H-46,220,32);
+  ctx.fillStyle='#34d17b'; ctx.fillRect(22,H-38,204*S.throttle,16);
+  ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.strokeRect(22,H-38,204,16);
+  ctx.fillStyle='#fff'; ctx.font='bold 11px ui-monospace, monospace';
+  ctx.fillText('THR '+Math.round(S.throttle*100)+'%', 24, H-50);
+  // centre crosshair / flight-path marker
+  ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.lineWidth=2;
+  const cx=W/2, cy=H*0.46;
+  ctx.beginPath(); ctx.arc(cx,cy,14,0,6.283); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx-22,cy); ctx.lineTo(cx-8,cy); ctx.moveTo(cx+8,cy); ctx.lineTo(cx+22,cy);
+  ctx.moveTo(cx,cy-22); ctx.lineTo(cx,cy-8); ctx.moveTo(cx,cy+8); ctx.lineTo(cx,cy+22); ctx.stroke();
+  // messages
+  if (S.msgT>0){
+    ctx.fillStyle='rgba(8,20,36,0.72)';
+    const w = ctx.measureText(S.msg).width + 36;
+    ctx.fillRect(W/2-w/2, 128, w, 40);
+    ctx.fillStyle='#ffd166'; ctx.font='bold 18px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText(S.msg, W/2, 155); ctx.textAlign='left';
+  }
+  // start / end screens
+  if (!S.started){
+    ctx.fillStyle='rgba(6,16,30,0.55)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#ffd166'; ctx.font='bold 54px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText('ARCHIPELAGO RUN', W/2, 250);
+    ctx.fillStyle='#fff'; ctx.font='bold 24px ui-monospace, monospace';
+    ctx.fillText('Fly Nusa-1 from Pulau Karang to Pulau Bintang', W/2, 300);
+    ctx.font='17px ui-monospace, monospace'; ctx.fillStyle='#cfe6ff';
+    ctx.fillText('Through 8 golden rings — then land on Runway 27.', W/2, 334);
+    ctx.fillStyle='#34d17b'; ctx.font='bold 22px ui-monospace, monospace';
+    ctx.fillText('CLICK OR PRESS ANY KEY TO FLY', W/2, 400);
+    ctx.textAlign='left';
+  }
+  if (S.mode==='done'){
+    ctx.fillStyle='rgba(6,16,30,0.6)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#ffd166'; ctx.font='bold 48px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText('FLIGHT COMPLETE', W/2, 300);
+    ctx.fillStyle='#fff'; ctx.font='bold 26px ui-monospace, monospace';
+    ctx.fillText('Score '+S.score+'  ·  Rings '+S.rings+'/8  ·  Time '+mm+':'+ss, W/2, 356);
+    ctx.fillStyle='#34d17b'; ctx.font='bold 20px ui-monospace, monospace';
+    ctx.fillText('PRESS R TO FLY AGAIN', W/2, 410);
+    ctx.textAlign='left';
+  }
+  if (S.mode==='crashed'){
+    ctx.fillStyle='rgba(40,6,6,0.55)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#ff6b5e'; ctx.font='bold 48px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText('CRASHED', W/2, 300);
+    ctx.fillStyle='#fff'; ctx.font='bold 22px ui-monospace, monospace';
+    ctx.fillText('The Nusa-1 went down. Press R to try again.', W/2, 356);
+    ctx.textAlign='left';
+  }
+  if (S.paused){
+    ctx.fillStyle='rgba(6,16,30,0.6)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#fff'; ctx.font='bold 40px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.fillText('PAUSED', W/2, 360); ctx.textAlign='left';
+  }
+}
+
+// ---------- scene presets (for screenshots) ----------
+// ?scene=takeoff | ring | landing | cockpit
+function applyScene(){
+  const q = new URLSearchParams(location.search);
+  const scene = q.get('scene');
+  if (!scene) return;
+  S.started = true;
+  if (scene==='takeoff'){
+    S.mode='takeoff'; S.speed=30; S.throttle=0.85; S.y=GROUND_Y; S.z=0;
+    showMsg('TAKEOFF — RUNWAY 09, PULAU KARANG', 4);
+  } else if (scene==='ring'){
+    S.mode='flying'; S.speed=62; S.throttle=0.7; S.y=330; S.z=2900; S.x=380;
+    S.heading=0.05; S.pitch=0.05; S.rings=3; S.score=300; S.time=74;
+    showMsg('RING 4/8  +100', 3);
+  } else if (scene==='landing'){
+    S.mode='flying'; S.speed=36; S.throttle=0.3; S.y=32; S.z=8750; S.x=0;
+    S.heading=0; S.pitch=-0.08; S.rings=8; S.score=800; S.time=186;
+    showMsg('FINAL — RUNWAY 27, PULAU BINTANG', 4);
+  } else if (scene==='cockpit'){
+    S.view='cockpit'; S.mode='flying'; S.speed=68; S.throttle=0.75; S.y=420; S.z=4900; S.x=60;
+    S.heading=-0.04; S.pitch=0.02; S.rings=5; S.score=500; S.time=122;
+  }
+}
+
+// ---------- main loop ----------
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(0.05, (now-last)/1000); last = now;
+  update(dt);
+  ctx.save();
+  if (S.camShake>0) ctx.translate((Math.random()-0.5)*S.camShake*8,(Math.random()-0.5)*S.camShake*8);
+  drawSky();
+  drawClouds();
+  drawPeaks();
+  drawSeaAndIslands();
+  drawRunway(0, 0, 0, '09');          // departure runway, Pulau Karang
+  drawRunway(0, 9000, 0, '27');     // destination runway, Pulau Bintang
+  drawRings();
+  drawBirds();
+  if (S.view==='chase') drawPlane();
+  if (S.view==='cockpit') drawCockpit();
+  drawHUD();
+  ctx.restore();
+  requestAnimationFrame(frame);
+}
+applyScene();
+requestAnimationFrame(frame);
+// Any key starts the game too (but not the control keys R / P / C,
+// which have their own jobs and would otherwise re-start it instantly).
+window.addEventListener('keydown', e=>{
+  const k = e.key.toLowerCase();
+  if (!S.started && k!=='r' && k!=='p' && k!=='c') startGame();
+});
+</script>
+</body>
+</html>
