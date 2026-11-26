@@ -574,9 +574,13 @@ function drawBirds(){
   }
 }
 function drawPlane(){
-  // Chase view: the Nusa-1 as a shaded 3D model, centre of screen,
-  // plus its soft shadow on the sea / ground far below (sells the height).
-  const cx = W/2, cy = H*0.58;
+  // Chase view: the Nusa-1 seen from BEHIND and slightly ABOVE, the way
+  // a real chase camera sits. The fuselage is FORESHORTENED — you look
+  // along it toward the horizon, not down on it from above — so the plane
+  // reads as flying FORWARD, not standing on its tail pointing at the sky.
+  // The wings are the wide horizontal feature; the tail (closest to the
+  // camera) is big; the nose and propeller are small, far away, up-screen.
+  const cx = W/2, cy = H*0.60;
   // --- ground shadow: project the plane's (x,z) onto the surface below.
   const gh = surfaceHeight(S.x, S.z);
   const shadowP = project(S.x, gh + 0.5, S.z);
@@ -593,80 +597,90 @@ function drawPlane(){
   ctx.rotate(-bank*0.9);
   const sh = S.camShake>0 ? (Math.random()-0.5)*S.camShake*10 : 0;
   ctx.translate(sh, sh*0.5);
-  // --- wings (drawn first, behind the fuselage): airfoil with thickness.
-  // Left wing: sunlit top edge, shaded underside.
-  const wingGrad = ctx.createLinearGradient(0,-6,0,40);
-  wingGrad.addColorStop(0,'#f4f1e8');
+  // --- propeller: a SMALL translucent disc far ahead (top of the sprite),
+  // because the nose is the farthest part from the chase camera.
+  const pa = S.prop;
+  ctx.fillStyle='rgba(60,60,60,0.14)';
+  ctx.beginPath(); ctx.ellipse(0, -30, 20, 5, 0, 0, 6.283); ctx.fill();
+  ctx.fillStyle='rgba(30,30,30,0.5)';
+  ctx.beginPath(); ctx.ellipse(0, -30, 17, 2.2, pa, 0, 6.283); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, -30, 17, 2.2, pa+1.57, 0, 6.283); ctx.fill();
+  ctx.fillStyle='#d8d4c8'; ctx.beginPath(); ctx.arc(0,-30,3.4,0,6.283); ctx.fill();
+  ctx.fillStyle='#c93a2c'; ctx.beginPath(); ctx.arc(0,-30,1.8,0,6.283); ctx.fill();
+  // --- wings: the wide horizontal feature, seen from above. Slight
+  // dihedral (tips a touch higher, toward the nose) so they read as 3D.
+  const wingGrad = ctx.createLinearGradient(0,-14,0,16);
+  wingGrad.addColorStop(0,'#f6f3ea');
   wingGrad.addColorStop(0.6,'#ddd8c8');
-  wingGrad.addColorStop(1,'#b9b4a2');
+  wingGrad.addColorStop(1,'#b3ae9c');
   ctx.fillStyle = wingGrad;
-  ctx.beginPath(); ctx.moveTo(-14,-6); ctx.lineTo(-118,26); ctx.lineTo(-118,40); ctx.lineTo(-12,16); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(14,-6); ctx.lineTo(118,26); ctx.lineTo(118,40); ctx.lineTo(12,16); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-16,-10); ctx.lineTo(-128,-2); ctx.lineTo(-128,12); ctx.lineTo(-14,8); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(16,-10); ctx.lineTo(128,-2); ctx.lineTo(128,12); ctx.lineTo(14,8); ctx.closePath(); ctx.fill();
   // Red wing roots (livery).
   ctx.fillStyle='#c93a2c';
-  ctx.beginPath(); ctx.moveTo(-14,-6); ctx.lineTo(-118,26); ctx.lineTo(-118,32); ctx.lineTo(-12,4); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(14,-6); ctx.lineTo(118,26); ctx.lineTo(118,32); ctx.lineTo(12,4); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-16,-10); ctx.lineTo(-128,-2); ctx.lineTo(-128,3); ctx.lineTo(-14,-2); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(16,-10); ctx.lineTo(128,-2); ctx.lineTo(128,3); ctx.lineTo(14,-2); ctx.closePath(); ctx.fill();
   // Wingtip navigation lights (red left, green right) with a soft glow.
-  ctx.fillStyle='rgba(255,59,48,0.35)'; ctx.beginPath(); ctx.arc(-118,33,9,0,6.283); ctx.fill();
-  ctx.fillStyle='#ff3b30'; ctx.beginPath(); ctx.arc(-118,33,4,0,6.283); ctx.fill();
-  ctx.fillStyle='rgba(52,209,123,0.35)'; ctx.beginPath(); ctx.arc(118,33,9,0,6.283); ctx.fill();
-  ctx.fillStyle='#34d17b'; ctx.beginPath(); ctx.arc(118,33,4,0,6.283); ctx.fill();
-  // --- tail: horizontal stabilizer + vertical fin.
-  ctx.fillStyle='#e8e4da';
-  ctx.beginPath(); ctx.moveTo(-8,52); ctx.lineTo(-52,72); ctx.lineTo(-52,80); ctx.lineTo(-6,62); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(8,52); ctx.lineTo(52,72); ctx.lineTo(52,80); ctx.lineTo(6,62); ctx.closePath(); ctx.fill();
-  // Vertical fin (red, with a white stripe) — the 3D "up" of the tail.
-  ctx.fillStyle='#c93a2c';
-  ctx.beginPath(); ctx.moveTo(-10,58); ctx.lineTo(10,58); ctx.lineTo(6,78); ctx.lineTo(-6,78); ctx.closePath(); ctx.fill();
-  ctx.fillStyle='#f4f1e8';
-  ctx.beginPath(); ctx.moveTo(-8,62); ctx.lineTo(8,62); ctx.lineTo(7,68); ctx.lineTo(-7,68); ctx.closePath(); ctx.fill();
-  // --- fuselage: a shaded 3D tube — bright on the sun side, dark below.
-  const fus = ctx.createLinearGradient(-16,0,16,0);
+  ctx.fillStyle='rgba(255,59,48,0.35)'; ctx.beginPath(); ctx.arc(-128,5,8,0,6.283); ctx.fill();
+  ctx.fillStyle='#ff3b30'; ctx.beginPath(); ctx.arc(-128,5,3.5,0,6.283); ctx.fill();
+  ctx.fillStyle='rgba(52,209,123,0.35)'; ctx.beginPath(); ctx.arc(128,5,8,0,6.283); ctx.fill();
+  ctx.fillStyle='#34d17b'; ctx.beginPath(); ctx.arc(128,5,3.5,0,6.283); ctx.fill();
+  // --- fuselage: SHORT and stout (foreshortened). You see its top and
+  // its tail end, not a long tube — that is what makes it fly forward.
+  const fus = ctx.createLinearGradient(-20,0,20,0);
   fus.addColorStop(0,'#c9c4b4');
   fus.addColorStop(0.28,'#f6f3ea');
   fus.addColorStop(0.55,'#e8e4da');
   fus.addColorStop(1,'#a49e8c');
   ctx.fillStyle = fus;
-  ctx.beginPath(); ctx.ellipse(0, 0, 16, 66, 0, 0, 6.283); ctx.fill();
-  // Red nose band + cheatline along the fuselage.
+  ctx.beginPath(); ctx.ellipse(0, -2, 19, 30, 0, 0, 6.283); ctx.fill();
+  // Red nose band at the far (top) end of the fuselage.
   ctx.fillStyle='#c93a2c';
-  ctx.beginPath(); ctx.ellipse(0, -18, 15, 30, 0, 0, 6.283); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, -22, 17, 12, 0, 0, 6.283); ctx.fill();
+  // Cheatline along the fuselage.
   ctx.fillStyle='rgba(201,58,44,0.9)';
-  ctx.fillRect(-15, 6, 30, 4);
-  // Canopy: glossy blue glass with a white highlight.
-  const can = ctx.createLinearGradient(-10,-58,10,-18);
+  ctx.fillRect(-18, 2, 36, 3);
+  // Canopy: glossy blue glass on TOP of the short fuselage, with highlight.
+  const can = ctx.createLinearGradient(-11,-26,11,-4);
   can.addColorStop(0,'#bfe6f7');
   can.addColorStop(0.5,'#7ec3e8');
   can.addColorStop(1,'#3f8fc4');
   ctx.fillStyle = can;
-  ctx.beginPath(); ctx.ellipse(0, -38, 10, 20, 0, 0, 6.283); ctx.fill();
-  ctx.fillStyle='rgba(255,255,255,0.8)';
-  ctx.beginPath(); ctx.ellipse(-3, -44, 4, 8, -0.4, 0, 6.283); ctx.fill();
-  // Cabin windows (two small portholes).
-  ctx.fillStyle='#2c4a5e';
-  ctx.beginPath(); ctx.arc(-6, -8, 2.6, 0, 6.283); ctx.fill();
-  ctx.beginPath(); ctx.arc(6, -8, 2.6, 0, 6.283); ctx.fill();
-  // --- propeller: translucent spinning disc + blades + spinner.
-  const pa = S.prop;
-  ctx.fillStyle='rgba(60,60,60,0.16)';
-  ctx.beginPath(); ctx.ellipse(0, -64, 36, 9, 0, 0, 6.283); ctx.fill();
-  ctx.fillStyle='rgba(30,30,30,0.55)';
-  ctx.beginPath(); ctx.ellipse(0, -64, 31, 3.4, pa, 0, 6.283); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(0, -64, 31, 3.4, pa+1.57, 0, 6.283); ctx.fill();
-  ctx.fillStyle='#d8d4c8'; ctx.beginPath(); ctx.arc(0,-64,5.5,0,6.283); ctx.fill();
-  ctx.fillStyle='#c93a2c'; ctx.beginPath(); ctx.arc(0,-64,2.6,0,6.283); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, -15, 11, 11, 0, 0, 6.283); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.85)';
+  ctx.beginPath(); ctx.ellipse(-3, -18, 4, 5, -0.4, 0, 6.283); ctx.fill();
+  // --- tail: the CLOSEST part to the camera, so it is big and clear.
+  // Horizontal stabilizer.
+  ctx.fillStyle='#e8e4da';
+  ctx.beginPath(); ctx.moveTo(-10,20); ctx.lineTo(-56,34); ctx.lineTo(-56,42); ctx.lineTo(-8,30); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(10,20); ctx.lineTo(56,34); ctx.lineTo(56,42); ctx.lineTo(8,30); ctx.closePath(); ctx.fill();
+  // Vertical fin (red, white stripe) — the tall "up" of the tail.
+  ctx.fillStyle='#c93a2c';
+  ctx.beginPath(); ctx.moveTo(-11,24); ctx.lineTo(11,24); ctx.lineTo(7,52); ctx.lineTo(-7,52); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#f4f1e8';
+  ctx.beginPath(); ctx.moveTo(-9,28); ctx.lineTo(9,28); ctx.lineTo(8,34); ctx.lineTo(-8,34); ctx.closePath(); ctx.fill();
+  // Registration on the fin.
+  ctx.fillStyle='#fff'; ctx.font='bold 8px ui-monospace, monospace';
+  ctx.textAlign='center'; ctx.fillText('NUSA-1', 0, 44); ctx.textAlign='left';
+  // --- landing gear: two wheels under the wings while on the ground,
+  // so the takeoff shot shows the plane SITTING on the runway.
+  if (S.mode==='takeoff' && S.y <= 4){
+    ctx.fillStyle='#1a1a1a';
+    ctx.beginPath(); ctx.arc(-34, 16, 5, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(34, 16, 5, 0, 6.283); ctx.fill();
+    ctx.fillStyle='#555';
+    ctx.beginPath(); ctx.arc(-34, 16, 2, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.arc(34, 16, 2, 0, 6.283); ctx.fill();
+  }
   // Speed streaks when the throttle is high.
   if (S.throttle > 0.65 && S.speed > 55){
     ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=1.5;
     for (let i=0;i<4;i++){
-      const yy = -40 + i*30 + (S.time*90 % 24);
-      ctx.beginPath(); ctx.moveTo(-150, yy); ctx.lineTo(-118, yy); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(118, yy); ctx.lineTo(150, yy); ctx.stroke();
+      const yy = -26 + i*22 + (S.time*90 % 18);
+      ctx.beginPath(); ctx.moveTo(-160, yy); ctx.lineTo(-132, yy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(132, yy); ctx.lineTo(160, yy); ctx.stroke();
     }
   }
-  // Registration.
-  ctx.fillStyle='#333'; ctx.font='bold 10px ui-monospace, monospace';
-  ctx.textAlign='center'; ctx.fillText('NUSA-1', 0, 30); ctx.textAlign='left';
   ctx.restore();
 }
 function drawCockpit(){
