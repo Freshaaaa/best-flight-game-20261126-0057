@@ -795,6 +795,97 @@ function drawHUD(){
   ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.strokeRect(22,H-38,204,16);
   ctx.fillStyle='#fff'; ctx.font='bold 11px ui-monospace, monospace';
   ctx.fillText('THR '+Math.round(S.throttle*100)+'%', 24, H-50);
+  // --- compass strip (top-centre): heading tape with cardinal points ---
+  if (showCorners){
+    const hd = ((S.heading*57.2958)%360+360)%360;
+    const cw = 360, ch = 30, cx0 = W/2 - cw/2, cy0 = 14;
+    ctx.fillStyle='rgba(8,20,36,0.62)'; ctx.fillRect(cx0, cy0, cw, ch);
+    ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.strokeRect(cx0, cy0, cw, ch);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(cx0, cy0, cw, ch); ctx.clip();
+    for (let off=-180; off<=180; off+=15){
+      const h = (Math.round(hd) + off + 360) % 360;
+      const px = W/2 + off * 2;
+      const isCard = h % 90 === 0;
+      ctx.strokeStyle = isCard ? 'rgba(255,209,102,0.9)' : 'rgba(255,255,255,0.45)';
+      ctx.lineWidth = isCard ? 2 : 1;
+      ctx.beginPath(); ctx.moveTo(px, cy0 + ch - 8); ctx.lineTo(px, cy0 + ch - (isCard ? 2 : 5)); ctx.stroke();
+      if (isCard){
+        const lbl = h===0?'N':h===90?'E':h===180?'S':'W';
+        ctx.fillStyle='#ffd166'; ctx.font='bold 12px ui-monospace, monospace';
+        ctx.textAlign='center'; ctx.fillText(lbl, px, cy0 + 13); ctx.textAlign='left';
+      }
+    }
+    ctx.restore();
+    // centre caret + current heading readout
+    ctx.fillStyle='#ffd166';
+    ctx.beginPath(); ctx.moveTo(W/2-6, cy0+ch); ctx.lineTo(W/2+6, cy0+ch); ctx.lineTo(W/2, cy0+ch-7); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.font='bold 13px ui-monospace, monospace';
+    ctx.textAlign='center';
+    ctx.fillText(String(Math.round(hd)).padStart(3,'0')+'°', W/2, cy0 + ch + 16);
+    ctx.textAlign='left';
+    // --- next-ring indicator (under the compass) ---
+    const nxt = RINGS.find(r=>!r.passed);
+    if (nxt){
+      const dz = nxt.z - S.z, dx = nxt.x - S.x;
+      const dist = Math.round(Math.hypot(dx, dz));
+      const ang = Math.atan2(dx, dz) - S.heading;
+      let arrow = '↑';
+      if (ang > 0.5) arrow = '↗';
+      else if (ang < -0.5) arrow = '↖';
+      else if (ang > 0.15) arrow = '→';
+      else if (ang < -0.15) arrow = '←';
+      const label = 'NEXT RING ' + (RINGS.indexOf(nxt)+1) + '  ' + arrow + '  ' + dist.toLocaleString() + ' M';
+      ctx.fillStyle='rgba(8,20,36,0.62)';
+      const lw = ctx.measureText(label).width + 28;
+      ctx.fillRect(W/2 - lw/2, cy0 + ch + 22, lw, 26);
+      ctx.strokeStyle='rgba(255,209,102,0.6)'; ctx.strokeRect(W/2 - lw/2, cy0 + ch + 22, lw, 26);
+      ctx.fillStyle='#ffd166'; ctx.font='bold 14px ui-monospace, monospace';
+      ctx.textAlign='center'; ctx.fillText(label, W/2, cy0 + ch + 40); ctx.textAlign='left';
+    }
+    // --- minimap (bottom-right): the archipelago from above ---
+    const mx = W - 254, my = H - 206, mw = 240, mh = 150;
+    ctx.fillStyle='rgba(8,20,36,0.72)'; ctx.fillRect(mx, my, mw, mh);
+    ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.strokeRect(mx, my, mw, mh);
+    ctx.fillStyle='#9fd8ef'; ctx.font='bold 11px ui-monospace, monospace';
+    ctx.fillText('MAP — ARCHIPELAGO', mx + 8, my + 15);
+    const mapX = x => mx + 12 + (x + 1000) / 2000 * (mw - 24);
+    const mapZ = z => my + mh - 10 - (z / 9000) * (mh - 30);
+    // sea + route line
+    ctx.fillStyle='rgba(30,110,160,0.5)'; ctx.fillRect(mx+12, my+22, mw-24, mh-32);
+    ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(mapX(0), mapZ(0)); ctx.lineTo(mapX(0), mapZ(9000)); ctx.stroke();
+    ctx.setLineDash([]);
+    // islands
+    for (const isl of ISLANDS){
+      ctx.fillStyle='rgba(90,180,90,0.9)';
+      ctx.beginPath(); ctx.arc(mapX(isl.x), mapZ(isl.z), 4, 0, 6.283); ctx.fill();
+    }
+    // rings: passed = filled gold, next = pulsing outline, future = dim
+    RINGS.forEach((r, i)=>{
+      const px = mapX(r.x), py = mapZ(r.z);
+      if (r.passed){
+        ctx.fillStyle='#ffd166'; ctx.beginPath(); ctx.arc(px, py, 3.5, 0, 6.283); ctx.fill();
+      } else if (nxt === r){
+        ctx.strokeStyle='#ffd166'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(px, py, 6, 0, 6.283); ctx.stroke();
+      } else {
+        ctx.strokeStyle='rgba(255,209,102,0.45)'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.arc(px, py, 3, 0, 6.283); ctx.stroke();
+      }
+    });
+    // destination runway marker
+    ctx.fillStyle='#ff6b5e'; ctx.fillRect(mapX(0)-5, mapZ(9000)-2, 10, 4);
+    // plane (white triangle, rotated by heading)
+    const px = mapX(S.x), py = mapZ(S.z);
+    ctx.save(); ctx.translate(px, py); ctx.rotate(S.heading);
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.moveTo(0,-7); ctx.lineTo(5,6); ctx.lineTo(-5,6); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle='#cfe6ff'; ctx.font='10px ui-monospace, monospace';
+    ctx.fillText('KARANG', mx+8, my+mh-14);
+    ctx.fillText('BINTANG', mx+mw-58, my+24);
+  }
   // centre crosshair / flight-path marker
   ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.lineWidth=2;
   const cx=W/2, cy=H*0.46;
@@ -859,15 +950,18 @@ function applyScene(){
     showMsg('TAKEOFF — RUNWAY 09, PULAU KARANG', 4);
   } else if (scene==='ring'){
     S.mode='flying'; S.speed=62; S.throttle=0.7; S.y=330; S.z=2900; S.x=380;
-    S.heading=0.05; S.pitch=0.05; S.rings=3; S.score=300; S.time=74;
+    S.heading=0.05; S.pitch=0.05; S.roll=0.55; S.rings=3; S.score=300; S.time=74;
+    RINGS[0].passed = RINGS[1].passed = RINGS[2].passed = true;
     showMsg('RING 4/8  +100', 3);
   } else if (scene==='landing'){
     S.mode='flying'; S.speed=36; S.throttle=0.3; S.y=32; S.z=8750; S.x=0;
     S.heading=0; S.pitch=-0.08; S.rings=8; S.score=800; S.time=186;
+    RINGS.forEach(r=>r.passed=true);
     showMsg('FINAL — RUNWAY 27, PULAU BINTANG', 4);
   } else if (scene==='cockpit'){
     S.view='cockpit'; S.mode='flying'; S.speed=68; S.throttle=0.75; S.y=420; S.z=4900; S.x=60;
     S.heading=-0.04; S.pitch=0.02; S.rings=5; S.score=500; S.time=122;
+    for (let i=0;i<5;i++) RINGS[i].passed = true;
   }
 }
 
