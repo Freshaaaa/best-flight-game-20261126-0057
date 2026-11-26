@@ -802,8 +802,11 @@ function buildAirport(){
   const wm=Mesh(); // windows (separate textured mesh, so winTex actually shows)
   function tower(cx,cz,h){
     const gy=groundY(cx,cz);
+    meshCylinder(m,cx,gy+1.5,cz,4.5,5.5,3,0.55,0.57,0.60,8); // base plinth
     meshCylinder(m,cx,gy+h/2,cz,2.6,3.4,h,0.92,0.92,0.90,8);
-    meshCylinder(m,cx,gy+h*0.72,cz,3.0,3.0,2.2,0.78,0.12,0.16,8); // red band
+    meshCylinder(m,cx,gy+h*0.35,cz,2.9,2.9,2.0,0.78,0.12,0.16,8); // red band low
+    meshCylinder(m,cx,gy+h*0.72,cz,3.0,3.0,2.2,0.78,0.12,0.16,8); // red band high
+    meshBox(m,cx,gy+h-0.5,cz,14,0.8,14,0.25,0.28,0.32); // cab visor / overhang
     meshBox(m,cx,gy+h+2,cz,13,6,13,0.35,0.62,0.85);
     // lit windows around the cabin (4 sides)
     const wy0=gy+h+0.5,wy1=gy+h+4.5,wuv=[[0,0],[1,0],[1,1],[0,1]];
@@ -812,14 +815,31 @@ function buildAirport(){
     meshFlatQuad(wm,[cx-5,wy0,cz+6.6],[cx+5,wy0,cz+6.6],[cx+5,wy1,cz+6.6],[cx-5,wy1,cz+6.6],[0,0,1],1,1,1,wuv,winTex);
     meshFlatQuad(wm,[cx+5,wy0,cz-6.6],[cx-5,wy0,cz-6.6],[cx-5,wy1,cz-6.6],[cx+5,wy1,cz-6.6],[0,0,-1],1,1,1,wuv,winTex);
     meshBox(m,cx,gy+h+6,cz,13.5,1,13.5,0.75,0.15,0.18);
-    meshBox(m,cx,gy+h+9.5,cz,0.4,6,0.4,0.3,0.3,0.32);
+    // antenna array on the roof (3 whips + a small dish)
+    meshBox(m,cx-4,gy+h+8.5,cz,0.3,5,0.3,0.3,0.3,0.32);
+    meshBox(m,cx+4,gy+h+8,cz-3,0.3,4,0.3,0.3,0.3,0.32);
+    meshBox(m,cx+4,gy+h+8,cz+3,0.3,4,0.3,0.3,0.3,0.32);
+    meshSphere(m,cx,gy+h+7.5,cz+5,1.2,1.2,0.6,0.85,0.85,0.88,8);
     meshSphere(m,cx,gy+h+13,cz,0.9,0.9,0.9,1.0,0.3,0.2,6);
+    // equipment building at the base
+    meshBox(m,cx+8,gy+2,cz+6,8,4,6,0.78,0.78,0.76);
+    meshBox(m,cx+8,gy+4.4,cz+6,8.6,0.8,6.6,0.5,0.53,0.58);
   }
   function hangar(cx,cz){
     const gy=groundY(cx,cz);
     meshBox(m,cx,gy+5,cz,34,10,22,0.82,0.83,0.85);
-    meshBox(m,cx,gy+10.8,cz,36,1.6,24,0.55,0.58,0.62);
-    meshBox(m,cx+17.2,gy+5,cz,0.6,8,18,0.78,0.12,0.16);
+    // shallow gable roof (ridge along x)
+    meshFlatQuad(m,[cx-18,gy+10.5,cz],[cx+18,gy+10.5,cz],[cx+18,gy+13,cz+12],[cx-18,gy+13,cz+12],[0,0.4,1],0.5,0.53,0.58,null);
+    meshFlatQuad(m,[cx+18,gy+10.5,cz],[cx-18,gy+10.5,cz],[cx-18,gy+13,cz-12],[cx+18,gy+13,cz-12],[0,0.4,-1],0.5,0.53,0.58,null);
+    // big hangar door on the apron side (+x) with horizontal slats
+    meshFlatQuad(m,[cx+17.2,gy+0.5,cz-8],[cx+17.2,gy+0.5,cz+8],[cx+17.2,gy+8.5,cz+8],[cx+17.2,gy+8.5,cz-8],[1,0,0],0.35,0.38,0.42,null);
+    for(const dy of [2.5,4.5,6.5]){
+      meshBox(m,cx+17.4,gy+dy,cz,0.3,0.4,16,0.6,0.62,0.65);
+    }
+    // windows above the door + on the far wall
+    const hwuv=[[0,0],[1,0],[1,1],[0,1]];
+    meshFlatQuad(wm,[cx+17.3,gy+9,cz-7],[cx+17.3,gy+9,cz+7],[cx+17.3,gy+10.5,cz+7],[cx+17.3,gy+10.5,cz-7],[1,0,0],1,1,1,hwuv,winTex);
+    meshFlatQuad(wm,[cx-17.3,gy+9,cz+7],[cx-17.3,gy+9,cz-7],[cx-17.3,gy+10.5,cz-7],[cx-17.3,gy+10.5,cz+7],[-1,0,0],1,1,1,hwuv,winTex);
   }
   function windsock(cx,cz){
     const gy=groundY(cx,cz);
@@ -905,15 +925,20 @@ function buildPalms(){
   const m=Mesh();
   for(const p of PALMS){
     const gy=groundY(p.x,p.z);
-    // trunk: lean slightly, approximated by a thin tilted box
-    meshBox(m,p.x+Math.sin(p.lean)*p.h/2,gy+p.h/2,p.z,1.1,p.h,1.1,0.42,0.30,0.18);
-    // crown: 5 flattened green spheres around the top
+    // trunk: two segments for a slight curve (lower vertical, upper leaning)
+    meshBox(m,p.x,gy+p.h*0.25,p.z,1.2,p.h*0.5,1.2,0.42,0.30,0.18);
+    meshBox(m,p.x+Math.sin(p.lean)*p.h*0.25,gy+p.h*0.75,p.z,1.0,p.h*0.5,1.0,0.45,0.32,0.20);
+    // crown: 7 longer drooping fronds + a top tuft
     const tx=p.x+Math.sin(p.lean)*p.h,ty=gy+p.h,tz=p.z;
-    for(let k=0;k<5;k++){
-      const a=k/5*TAU;
-      meshSphere(m,tx+Math.cos(a)*2.6,ty+0.4,tz+Math.sin(a)*2.6,3.4,1.1,3.4,0.16,0.45,0.16,6);
+    for(let k=0;k<7;k++){
+      const a=k/7*TAU;
+      meshSphere(m,tx+Math.cos(a)*3.4,ty-0.2,tz+Math.sin(a)*3.4,4.0,0.9,4.0,0.14,0.42,0.14,6);
     }
     meshSphere(m,tx,ty+1.2,tz,2.6,1.2,2.6,0.20,0.52,0.18,6);
+    // coconuts under the crown
+    meshSphere(m,tx+1.2,ty-0.8,tz+0.6,0.7,0.7,0.7,0.45,0.32,0.18,6);
+    meshSphere(m,tx-1.0,ty-0.8,tz-0.8,0.7,0.7,0.7,0.45,0.32,0.18,6);
+    meshSphere(m,tx+0.2,ty-0.9,tz-1.2,0.7,0.7,0.7,0.42,0.30,0.16,6);
   }
   return meshToGL(m);
 }
