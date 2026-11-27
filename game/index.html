@@ -1682,7 +1682,7 @@ function drawHUD(){
   }
   txt('BANK '+(S.bank>=0?'+':'')+(S.bank*57.3).toFixed(0)+'°',1086,204,12,'#bfe3ff','left');
   // --- bottom-right: flight progress (distance, ETA, ring strip) ---
-  panel(1074,480,196,210,0.6);
+  panel(1074,480,196,230,0.6);
   txt('PENERBANGAN',1086,500,12,'#8fb8d8','left','700');
   const destD=Math.round(Math.hypot(S.x,9000-S.z)*10);
   txt('JARAK KE RWY 27',1086,528,12,'#8fb8d8','left','700');
@@ -1699,6 +1699,7 @@ function drawHUD(){
   }
   txt('SKOR '+(S.rings*100)+' + BONUS '+(500+50*S.rings),1086,664,11,'#bfe3ff','left');
   txt('SAAT MENDARAT',1086,680,11,'#bfe3ff','left');
+  txt('DUNIA: 8 PULAU · 5 GUNUNG · 26 AWAN',1086,704,10,'#ffd23d','left','700');
   // --- minimap (bottom-left): archipelago, runways, rings, plane ---
   panel(10,480,140,200,0.6);
   txt('PETA',80,500,12,'#8fb8d8','center','700');
