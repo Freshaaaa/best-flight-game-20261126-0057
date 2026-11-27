@@ -1,6 +1,8 @@
 // Archipelago Run — entrypoint (Node 22, standard library only).
 //
-// The grader runs `node /bot/main.ts` with MAKEFUN_OUTPUT_DIR set to an
+// v2 (round 2 resubmission): raw WebGL renderer, detailed airport/terrain,
+// volcano smoke, live minimap, 4 missions — rebuilt after v1 ranked
+// 4908/6258 in round 1. The grader runs `node /bot/main.ts` with MAKEFUN_OUTPUT_DIR set to an
 // empty writable directory (fallback "/output"). This copies the playable
 // game (game/) and its screenshots into the output, then builds the
 // dossier the scorer verifies: dossier.json must equal what the kit's
