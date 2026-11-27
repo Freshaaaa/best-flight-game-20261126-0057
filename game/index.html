@@ -1653,7 +1653,7 @@ function drawHUD(){
   // --- top bar ---
   panel(10,10,1260,46,0.55);
   txt('ARCHIPELAGO RUN  ·  NUSA-1  ·  '+MISSION_NAMES[S.mission],26,33,17,'#9fd8ff','left','800');
-  txt('SKOR '+S.score,640,33,19,'#ffd23d','center','800');
+  txt('SKOR '+S.score,640,33,23,'#ffd23d','center','800');
   txt('CINCIN '+S.rings+'/8',800,33,16,'#eaf6ff','center','700');
   txt(fmtTime(S.time),1000,33,16,'#eaf6ff','center','700');
   if(SCALE<2)txt(Math.round(S.fps)+' fps',1244,33,13,'#8fb8d8','right');
@@ -1784,7 +1784,7 @@ function drawHUD(){
 function drawTopStrip(){
   panel(10,10,1260,46,0.55);
   txt('ARCHIPELAGO RUN  ·  NUSA-1  ·  COCKPIT  ·  '+MISSION_NAMES[S.mission],26,33,16,'#9fd8ff','left','800');
-  txt('SKOR '+S.score,640,33,19,'#ffd23d','center','800');
+  txt('SKOR '+S.score,640,33,23,'#ffd23d','center','800');
   txt('CINCIN '+S.rings+'/8',800,33,16,'#eaf6ff','center','700');
   txt(fmtTime(S.time),1000,33,16,'#eaf6ff','center','700');
   if(SCALE<2)txt(Math.round(S.fps)+' fps',1244,33,13,'#8fb8d8','right');
@@ -1918,8 +1918,8 @@ if(scene==='takeoff'){S.started=true;S.mode='flying';S.x=300;S.y=130;S.z=-450;S.
 else if(scene==='ring'){S.started=true;S.mode='flying';S.x=380;S.y=230;S.z=2700;S.heading=0.2;S.pitch=-0.02;S.speed=70;S.throttle=0.7;S.nextRing=2;S.rings=2;S.score=200;}
 else if(scene==='landing'){S.started=true;S.mode='flying';S.x=20;S.y=35;S.z=8850;S.heading=-0.1;S.speed=35;S.throttle=0.25;S.pitch=-0.04;S.nextRing=8;S.rings=8;S.score=800;}
 else if(scene==='cockpit'){S.started=true;S.mode='flying';S.view='cockpit';S.x=200;S.y=230;S.z=4500;S.heading=0.1;S.speed=70;S.throttle=0.55;S.pitch=0;S.nextRing=4;S.rings=3;S.score=300;}
-else if(scene==='cover'){S.started=true;S.mode='flying';S.x=-320;S.y=300;S.z=1650;S.heading=0;S.speed=75;S.throttle=0.55;S.pitch=0;S.nextRing=1;S.rings=1;S.score=100;}
-else if(scene==='landed'){S.started=true;S.mode='takeoff';S.x=38;S.y=4;S.z=9170;S.heading=2.7;S.speed=0;S.throttle=0;S.pitch=0;S.camDist=45;S.camH=0.32;}
+else if(scene==='cover'){S.started=true;S.mode='flying';S.x=-320;S.y=300;S.z=1650;S.heading=0;S.speed=75;S.throttle=0.55;S.pitch=0;S.nextRing=1;S.rings=1;S.score=100;S.camDist=26;S.camH=0.32;}
+else if(scene==='landed'){S.started=true;S.mode='takeoff';S.x=38;S.y=4;S.z=9170;S.heading=2.7;S.speed=0;S.throttle=0;S.pitch=0;S.camDist=30;S.camH=0.32;}
 
 // ---------- main loop ----------
 let lastT=performance.now();
