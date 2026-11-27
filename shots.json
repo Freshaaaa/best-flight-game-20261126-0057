@@ -2,21 +2,21 @@
   {
     "file": "screenshots/1-cover.png",
     "scene": "cover",
-    "bytes": 215520
+    "bytes": 216153
   },
   {
     "file": "screenshots/2-landed.png",
     "scene": "landed",
-    "bytes": 156454
+    "bytes": 148689
   },
   {
     "file": "screenshots/3-landing.png",
     "scene": "landing",
-    "bytes": 178932
+    "bytes": 180545
   },
   {
     "file": "screenshots/4-cockpit.png",
     "scene": "cockpit",
-    "bytes": 48037
+    "bytes": 47877
   }
 ]

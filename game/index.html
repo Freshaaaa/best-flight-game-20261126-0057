@@ -729,9 +729,9 @@ function buildSky(night){
       // gradient: golden-hour zenith deep blue -> horizon warm gold
       // (night: near-black -> dark blue)
       const t=clamp(1-ny,0,1);
-      const r=night?lerp(0.01,0.07,Math.pow(t,1.4)):lerp(0.15,0.98,Math.pow(t,1.4));
-      const g=night?lerp(0.02,0.11,Math.pow(t,1.4)):lerp(0.35,0.72,Math.pow(t,1.4));
-      const b=night?lerp(0.06,0.22,Math.pow(t,1.2)):lerp(0.75,0.42,Math.pow(t,1.2));
+      const r=night?lerp(0.01,0.07,Math.pow(t,1.4)):lerp(0.10,1.0,Math.pow(t,1.4));
+      const g=night?lerp(0.02,0.11,Math.pow(t,1.4)):lerp(0.30,0.62,Math.pow(t,1.4));
+      const b=night?lerp(0.06,0.22,Math.pow(t,1.2)):lerp(0.80,0.28,Math.pow(t,1.2));
       row.push(meshVert(m,nx*R,ny*R,nz*R,r,g,b,0,0,1,0,0));
     }
     grid.push(row);
@@ -964,7 +964,7 @@ function buildPalms(){
 }
 function buildRingMesh(ring){
   const m=Mesh();
-  meshTorus(m,ring.x,ring.y,ring.z,ring.r,5.5,0.96,0.72,0.10,22,10);
+  meshTorus(m,ring.x,ring.y,ring.z,ring.r,5.5,1.0,0.78,0.05,22,10);
   // small beacon lights around the torus
   for(let k=0;k<6;k++){
     const a=k/6*TAU;
@@ -1500,7 +1500,7 @@ function render(){
       const rise=(S.time*10+k*38)%230;
       const sx=p[0]+rise*0.4,sy=py+30+rise,sz=p[1]+rise*0.14;
       const ss=30+rise*0.5;
-      sprites.push({cx:sx,cy:sy,cz:sz,rx:ss,ry:ss*0.7,r:0.55,g:0.55,b:0.58,d:Math.hypot(sx-eye[0],sy-eye[1],sz-eye[2])});
+      sprites.push({cx:sx,cy:sy,cz:sz,rx:ss,ry:ss*0.7,r:0.38,g:0.36,b:0.40,d:Math.hypot(sx-eye[0],sy-eye[1],sz-eye[2])});
     }
     sprites.push({cx:p[0],cy:py+6,cz:p[1],rx:28,ry:15,r:1.0,g:0.45,b:0.12,d:Math.hypot(p[0]-eye[0],py+6-eye[1],p[1]-eye[2])});
   }
