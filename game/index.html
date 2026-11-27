@@ -274,7 +274,7 @@ gl.enable(gl.BLEND);
 gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
 gl.getExtension('OES_element_index_uint');
 window.__gl=gl;
-gl.uniform3f(U.uSun,0.55,0.62,0.35);
+gl.uniform3f(U.uSun,0.6,0.45,0.35);
 gl.uniform3f(U.uFogCol,0.78,0.88,0.94);
 // ---------- shadow mapping (real sun shadows) ----------
 const SHADOW_SIZE=1024;
@@ -1285,7 +1285,7 @@ function update(dt){
 
 // ---------- camera + render ----------
 let lastView=matIdentity(),lastProj=matIdentity();
-const SUN_DIR=[0.55,0.62,0.35];
+const SUN_DIR=[0.6,0.45,0.35];
 function project(x,y,z){
   const v=transformPoint(lastView,[x,y,z]);
   const c=transformPoint(lastProj,v);
@@ -1341,7 +1341,7 @@ function renderShadowMap(){
 function render(){
   gl.viewport(0,0,glCanvas.width,glCanvas.height);
   // sky + fog colors follow the mission (day / night / storm)
-  const mc=S.mission==='night'?{clear:[0.02,0.03,0.08],fog:[0.05,0.08,0.15]}:S.mission==='storm'?{clear:[0.45,0.5,0.55],fog:[0.55,0.58,0.62]}:{clear:[0.55,0.78,0.92],fog:[0.78,0.88,0.94]};
+  const mc=S.mission==='night'?{clear:[0.02,0.03,0.08],fog:[0.05,0.08,0.15]}:S.mission==='storm'?{clear:[0.45,0.5,0.55],fog:[0.55,0.58,0.62]}:{clear:[0.62,0.76,0.9],fog:[0.84,0.85,0.9]};
   gl.clearColor(mc.clear[0],mc.clear[1],mc.clear[2],1);
   gl.uniform3f(U.uFogCol,mc.fog[0],mc.fog[1],mc.fog[2]);
   gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
@@ -1393,7 +1393,7 @@ function render(){
   drawMesh(S.mission==='night'?nightSkyGL:skyGL,matTranslate(eye[0],eye[1],eye[2]),{noFog:true});
   gl.depthMask(true);
   // sea (specular) then terrain
-  drawMesh(seaGL,ident,{spec:0.55,tex:waterTex});
+  drawMesh(seaGL,ident,{spec:0.75,tex:waterTex});
   drawMesh(terrainGL,ident,{tex:detailTex});
   drawMesh(runwayStripGL,ident,{tex:asphaltTex});
   drawMesh(runwayMarksGL,ident,{});
@@ -1495,13 +1495,13 @@ function render(){
   // volcano smoke: a rising column over each peak + a warm crater glow
   for(const p of PEAKS){
     const py=groundY(p[0],p[1]);
-    for(let k=0;k<4;k++){
-      const rise=(S.time*10+k*50)%200;
-      const sx=p[0]+rise*0.35,sy=py+30+rise,sz=p[1]+rise*0.12;
-      const ss=26+rise*0.45;
+    for(let k=0;k<6;k++){
+      const rise=(S.time*10+k*38)%230;
+      const sx=p[0]+rise*0.4,sy=py+30+rise,sz=p[1]+rise*0.14;
+      const ss=30+rise*0.5;
       sprites.push({cx:sx,cy:sy,cz:sz,rx:ss,ry:ss*0.7,r:0.55,g:0.55,b:0.58,d:Math.hypot(sx-eye[0],sy-eye[1],sz-eye[2])});
     }
-    sprites.push({cx:p[0],cy:py+6,cz:p[1],rx:20,ry:11,r:1.0,g:0.45,b:0.12,d:Math.hypot(p[0]-eye[0],py+6-eye[1],p[1]-eye[2])});
+    sprites.push({cx:p[0],cy:py+6,cz:p[1],rx:28,ry:15,r:1.0,g:0.45,b:0.12,d:Math.hypot(p[0]-eye[0],py+6-eye[1],p[1]-eye[2])});
   }
   sprites.sort((a,b)=>b.d-a.d);
   drawSprites(sprites,ident,camRight,camUp,S.mission==='night'?0.85:0.92);
@@ -1680,6 +1680,24 @@ function drawHUD(){
     txt('MENUJU RUNWAY 27',1086,182,15,'#ffd23d','left','800');
   }
   txt('BANK '+(S.bank>=0?'+':'')+(S.bank*57.3).toFixed(0)+'°',1086,204,12,'#bfe3ff','left');
+  // --- bottom-right: flight progress (distance, ETA, ring strip) ---
+  panel(1074,480,196,210,0.6);
+  txt('PENERBANGAN',1086,500,12,'#8fb8d8','left','700');
+  const destD=Math.round(Math.hypot(S.x,9000-S.z)*10);
+  txt('JARAK KE RWY 27',1086,528,12,'#8fb8d8','left','700');
+  txt(destD>=1000?(destD/1000).toFixed(1)+' km':destD+' m',1086,552,20,'#ffffff','left','800');
+  const etaS=S.speed>5?destD/(S.speed*0.514):0;
+  txt('ETA '+(etaS>0?fmtTime(etaS):'--:--'),1086,580,14,'#bfe3ff','left','700');
+  txt('CINCIN',1086,610,12,'#8fb8d8','left','700');
+  for(let i=0;i<8;i++){
+    const dx=1086+i*21,dy=632;
+    hctx.fillStyle=RINGS[i].passed?'#37c871':(i===S.nextRing?'#ffd23d':'rgba(255,255,255,0.22)');
+    hctx.beginPath();hctx.arc(dx,dy,i===S.nextRing?6+Math.sin(S.time*4)*1.5:5,0,TAU);hctx.fill();
+    hctx.fillStyle='#0a1a28';hctx.font='700 9px Arial,sans-serif';hctx.textAlign='center';hctx.textBaseline='middle';
+    hctx.fillText(String(i+1),dx,dy+0.5);
+  }
+  txt('SKOR '+(S.rings*100)+' + BONUS '+(500+50*S.rings),1086,664,11,'#bfe3ff','left');
+  txt('SAAT MENDARAT',1086,680,11,'#bfe3ff','left');
   // --- minimap (bottom-left): archipelago, runways, rings, plane ---
   panel(10,480,140,200,0.6);
   txt('PETA',80,500,12,'#8fb8d8','center','700');
@@ -1897,9 +1915,9 @@ const missionParam=qs.get('mission');
 if(['day','night','storm','emergency'].includes(missionParam))S.mission=missionParam;
 if(scene==='takeoff'){S.started=true;S.mode='flying';S.x=300;S.y=130;S.z=-450;S.heading=-0.45;S.speed=25;S.throttle=0.3;S.pitch=-0.02;}
 else if(scene==='ring'){S.started=true;S.mode='flying';S.x=380;S.y=230;S.z=2700;S.heading=0.2;S.pitch=-0.02;S.speed=70;S.throttle=0.7;S.nextRing=2;S.rings=2;S.score=200;}
-else if(scene==='landing'){S.started=true;S.mode='flying';S.x=40;S.y=55;S.z=8720;S.heading=-0.3;S.speed=40;S.throttle=0.3;S.pitch=-0.06;S.nextRing=8;}
-else if(scene==='cockpit'){S.started=true;S.mode='flying';S.view='cockpit';S.x=0;S.y=200;S.z=4000;S.heading=0;S.speed=70;S.throttle=0.55;S.pitch=0;S.nextRing=4;S.rings=3;S.score=300;}
-else if(scene==='cover'){S.started=true;S.mode='flying';S.x=250;S.y=260;S.z=650;S.heading=0;S.speed=75;S.throttle=0.55;S.pitch=0;S.nextRing=0;S.rings=0;S.score=0;}
+else if(scene==='landing'){S.started=true;S.mode='flying';S.x=20;S.y=35;S.z=8850;S.heading=-0.1;S.speed=35;S.throttle=0.25;S.pitch=-0.04;S.nextRing=8;S.rings=8;S.score=800;}
+else if(scene==='cockpit'){S.started=true;S.mode='flying';S.view='cockpit';S.x=200;S.y=230;S.z=4500;S.heading=0.1;S.speed=70;S.throttle=0.55;S.pitch=0;S.nextRing=4;S.rings=3;S.score=300;}
+else if(scene==='cover'){S.started=true;S.mode='flying';S.x=-320;S.y=300;S.z=1650;S.heading=0;S.speed=75;S.throttle=0.55;S.pitch=0;S.nextRing=1;S.rings=1;S.score=100;}
 else if(scene==='landed'){S.started=true;S.mode='takeoff';S.x=38;S.y=4;S.z=9170;S.heading=2.7;S.speed=0;S.throttle=0;S.pitch=0;S.camDist=45;S.camH=0.32;}
 
 // ---------- main loop ----------
